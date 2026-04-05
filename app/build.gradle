@@ -1,0 +1,126 @@
+plugins {
+    id "com.android.application"
+    id "org.jetbrains.kotlin.android"
+    id "com.google.devtools.ksp" version "2.0.0-1.0.21"
+    id "org.jetbrains.kotlin.plugin.serialization" version "2.0.0"
+}
+
+android {
+    compileSdk 36
+    namespace "com.omnix.agent"
+
+    defaultConfig {
+        applicationId "com.omnix.agent"
+        minSdk 31
+        targetSdk 36
+        versionCode 1
+        versionName "1.0.0"
+
+        ndk {
+            abiFilters "arm64-v8a"  // Samsung S25 Ultra only
+        }
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        // Porcupine key - set in local.properties or environment
+        def porcupineKey = System.getenv("PORCUPINE_KEY") ?: (project.hasProperty("PORCUPINE_KEY") ? project.PORCUPINE_KEY : "")
+        buildConfigField "String", "PORCUPINE_KEY", "\"${porcupineKey}\""
+    }
+
+    signingConfigs {
+        release {
+            storeFile System.getenv("KEYSTORE_PATH") ? file(System.getenv("KEYSTORE_PATH")) : null
+            storePassword System.getenv("STORE_PASSWORD") ?: ""
+            keyAlias System.getenv("KEY_ALIAS") ?: ""
+            keyPassword System.getenv("KEY_PASSWORD") ?: ""
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+            signingConfig signingConfigs.release
+        }
+        debug {
+            applicationIdSuffix ".debug"
+            debuggable true
+        }
+    }
+
+    splits {
+        abi {
+            enable true
+            reset()
+            include "arm64-v8a"
+            universalApk false
+        }
+    }
+
+    buildFeatures {
+        viewBinding true
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+        freeCompilerArgs += ["-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi"]
+    }
+
+    sourceSets {
+        main {
+            kotlin.srcDirs = ['src/main/kotlin']
+        }
+        test {
+            kotlin.srcDirs = ['src/test/kotlin']
+        }
+        androidTest {
+            kotlin.srcDirs = ['src/androidTest/kotlin']
+        }
+    }
+}
+
+dependencies {
+    // LiteRT (Google AI Edge) - Gemma 4 on-device inference
+    implementation "com.google.ai.edge.litert:litert-lm:1.0.0"
+    implementation "com.google.ai.edge.litert:litert:1.4.0"
+
+    // Room Database
+    implementation "androidx.room:room-runtime:2.6.1"
+    implementation "androidx.room:room-ktx:2.6.1"
+    ksp "androidx.room:room-compiler:2.6.1"
+
+    // Kotlin Serialization
+    implementation "org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3"
+
+    // Coroutines
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0"
+
+    // Porcupine Wake Word Detection
+    implementation "ai.picovoice:porcupine-android:3.0.1"
+
+    // Lifecycle
+    implementation "androidx.lifecycle:lifecycle-service:2.8.0"
+    implementation "androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.0"
+    implementation "androidx.lifecycle:lifecycle-runtime-ktx:2.8.0"
+
+    // AndroidX Core
+    implementation "androidx.core:core-ktx:1.13.1"
+    implementation "androidx.appcompat:appcompat:1.7.0"
+    implementation "com.google.android.material:material:1.12.0"
+    implementation "androidx.constraintlayout:constraintlayout:2.1.4"
+
+    // WorkManager
+    implementation "androidx.work:work-runtime-ktx:2.9.0"
+
+    // Testing
+    testImplementation "junit:junit:4.13.2"
+    androidTestImplementation "androidx.test.ext:junit:1.2.1"
+    androidTestImplementation "androidx.test.espresso:espresso-core:3.6.1"
+}

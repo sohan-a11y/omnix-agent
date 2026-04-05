@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="omnix_blue">#2196F3</color>
+    <color name="omnix_blue_dark">#0D47A1</color>
+    <color name="omnix_accent">#00BCD4</color>
+    <color name="omnix_overlay_bg">#CC000000</color>
+    <color name="omnix_overlay_text">#FFFFFF</color>
+</resources>

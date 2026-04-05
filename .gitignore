@@ -1,0 +1,52 @@
+# Android
+*.iml
+.gradle
+/local.properties
+/.idea/
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+*.apk
+*.aab
+*.ap_
+
+# Gradle
+gradle-wrapper.jar
+.gradle/
+
+# Keystore - NEVER commit
+*.jks
+*.keystore
+keystore.jks
+
+# Model files - too large
+*.litertlm
+*.gguf
+*.bin
+/app/src/main/assets/models/
+models/
+
+# Generated text files from docx extraction
+*_extracted.txt
+*.txt
+tasks_*.txt
+module*_spec.txt
+impl_spec_clean.txt
+
+# Secrets
+.env
+local.properties
+secrets.properties
+
+# Build outputs
+app/build/
+
+# macOS
+.DS_Store
+*.swp
+
+# IntelliJ IDEA
+*.idea/
+*.iml
