@@ -23,6 +23,7 @@ import com.omnix.agent.skills.CorrectionLearner
 import com.omnix.agent.improvements.ProactiveAssistant
 import com.omnix.agent.skills.SkillLibrary
 import com.omnix.agent.voice.TTS
+import com.omnix.agent.voice.VoicePipeline
 import com.omnix.agent.voice.WhisperEngine
 import java.io.File
 import java.io.FileOutputStream
@@ -270,6 +271,7 @@ class OnboardingActivity : AppCompatActivity() {
 
     private fun startOmnix() {
         GemmaInferenceEngine.initialize(this)
+        VoicePipeline.start(this)
         TTS.speak("OMNIX is ready. Say Hey OMNIX to start.", TTS.QUEUE_FLUSH)
         moveTaskToBack(true)
     }

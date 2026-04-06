@@ -36,9 +36,11 @@ object VoicePipeline {
             val whisperReady = WhisperEngine.initialize(ctx)
             if (wakeReady && whisperReady) {
                 audioLoop(ctx)
+            } else {
+                // Models not downloaded yet — reset state so it can be restarted
+                // by OnboardingActivity after download completes
+                running = false
             }
-            // Models not downloaded yet — VoicePipeline will be restarted
-            // by OnboardingActivity after download completes
         }
     }
 
