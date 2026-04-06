@@ -164,7 +164,6 @@ class GemmaDownloadWorker(
     }
 
     private fun openConnectionWithRedirects(startUrl: String): HttpURLConnection {
-        val hfToken = EncryptedPrefsManager.getHfToken(context)
         var url = startUrl
         var conn: HttpURLConnection
         var redirects = 0
@@ -176,10 +175,7 @@ class GemmaDownloadWorker(
             // HuggingFace needs a browser-like User-Agent to avoid 403
             conn.setRequestProperty("User-Agent",
                 "Mozilla/5.0 (Android; OMNIX-Agent/1.0) AppleWebKit/537.36")
-            // HuggingFace gated models require Bearer token auth
-            if (hfToken != null) {
-                conn.setRequestProperty("Authorization", "Bearer $hfToken")
-            }
+            
             conn.connect()
             val code = conn.responseCode
             if (code in 300..399 && redirects < MAX_REDIRECTS) {

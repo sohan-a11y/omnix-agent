@@ -12,6 +12,7 @@ object EncryptedPrefsManager {
 
     const val PREF_KEY_ZERODHA_API_KEY = "zerodha_api_key"
     const val PREF_KEY_ZERODHA_ACCESS_TOKEN = "zerodha_access_token"
+    const val PREF_KEY_HF_TOKEN = "hf_access_token"
     private const val PREFS_FILE = "omnix_secure_prefs"
 
     private fun getPrefs(context: Context) = EncryptedSharedPreferences.create(
@@ -48,4 +49,8 @@ object EncryptedPrefsManager {
         put(context, PREF_KEY_ZERODHA_API_KEY, apiKey)
         put(context, PREF_KEY_ZERODHA_ACCESS_TOKEN, accessToken)
     }
+
+    fun saveHfToken(context: Context, token: String) = put(context, PREF_KEY_HF_TOKEN, token)
+    fun getHfToken(context: Context): String? = get(context, PREF_KEY_HF_TOKEN)
+    fun hasHfToken(context: Context): Boolean = get(context, PREF_KEY_HF_TOKEN) != null
 }
