@@ -1,69 +1,71 @@
 package com.omnix.agent.voice
 
 import android.content.Context
-import android.content.Intent
-import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.speech.RecognitionListener
-import android.speech.RecognizerIntent
-import android.speech.SpeechRecognizer
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withTimeoutOrNull
-import kotlin.coroutines.resume
+import android.media.AudioFormat
+import android.media.AudioRecord
+import android.media.MediaRecorder
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
+/**
+ * Records a voice command after wake-word detection and transcribes it with
+ * Vosk (free, on-device, Apache 2.0 — no Google services, no internet, no API key).
+ *
+ * Recording stops when silence is detected or the timeout elapses.
+ */
 object ASREngine {
 
-    /**
-     * Captures a voice command and returns the transcribed text.
-     * Uses Android's on-device speech recognition.
-     * Returns null on timeout or error.
-     */
+    private const val SAMPLE_RATE            = 16_000
+    private const val FRAME_SHORTS           = 512
+    private const val SILENCE_RMS_THRESHOLD  = 200f
+    private const val SILENCE_FRAMES_TO_STOP = 25     // ~800 ms at 512 samples/frame
+
     suspend fun captureCommand(
         context: Context,
-        timeoutMs: Long = 5000
-    ): String? = withTimeoutOrNull(timeoutMs) {
-        suspendCancellableCoroutine { cont ->
-            if (!SpeechRecognizer.isRecognitionAvailable(context)) {
-                cont.resume(null)
-                return@suspendCancellableCoroutine
-            }
+        timeoutMs: Long = 7000
+    ): String? = withContext(Dispatchers.IO) {
+        if (!WhisperEngine.isReady) return@withContext null
 
-            val recognizer = SpeechRecognizer.createSpeechRecognizer(context)
-            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-                putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
-            }
+        val minBuf = AudioRecord.getMinBufferSize(
+            SAMPLE_RATE,
+            AudioFormat.CHANNEL_IN_MONO,
+            AudioFormat.ENCODING_PCM_16BIT
+        )
+        val recorder = AudioRecord(
+            MediaRecorder.AudioSource.MIC,
+            SAMPLE_RATE,
+            AudioFormat.CHANNEL_IN_MONO,
+            AudioFormat.ENCODING_PCM_16BIT,
+            minBuf * 4
+        )
+        recorder.startRecording()
 
-            recognizer.setRecognitionListener(object : RecognitionListener {
-                override fun onResults(results: Bundle?) {
-                    val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                    recognizer.destroy()
-                    cont.resume(matches?.firstOrNull())
-                }
+        val allSamples   = mutableListOf<Short>()
+        val frame        = ShortArray(FRAME_SHORTS)
+        var silenceCount = 0
+        val deadline     = System.currentTimeMillis() + timeoutMs
 
-                override fun onError(error: Int) {
-                    recognizer.destroy()
-                    cont.resume(null)
-                }
+        while (System.currentTimeMillis() < deadline) {
+            val read = recorder.read(frame, 0, frame.size)
+            if (read <= 0) continue
+            for (i in 0 until read) allSamples.add(frame[i])
 
-                override fun onReadyForSpeech(params: Bundle?) {}
-                override fun onBeginningOfSpeech() {}
-                override fun onRmsChanged(rmsdB: Float) {}
-                override fun onBufferReceived(buffer: ByteArray?) {}
-                override fun onEndOfSpeech() {}
-                override fun onPartialResults(partialResults: Bundle?) {}
-                override fun onEvent(eventType: Int, params: Bundle?) {}
-            })
+            val sumSq = (0 until read).sumOf { frame[it].toLong() * frame[it] }
+            val rms   = Math.sqrt(sumSq.toDouble() / read).toFloat()
 
-            Handler(Looper.getMainLooper()).post {
-                recognizer.startListening(intent)
-            }
-
-            cont.invokeOnCancellation {
-                recognizer.destroy()
+            if (rms < SILENCE_RMS_THRESHOLD) {
+                silenceCount++
+                if (silenceCount >= SILENCE_FRAMES_TO_STOP && allSamples.size > SAMPLE_RATE / 2) break
+            } else {
+                silenceCount = 0
             }
         }
+
+        recorder.stop()
+        recorder.release()
+
+        if (allSamples.size < SAMPLE_RATE / 4) return@withContext null
+
+        WhisperEngine.transcribe(allSamples.toShortArray()).ifBlank { null }
     }
 }

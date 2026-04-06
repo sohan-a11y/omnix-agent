@@ -6,6 +6,8 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.omnix.agent.R
 import com.omnix.agent.ui.OnboardingActivity
+import java.io.File
+import java.util.zip.ZipInputStream
 
 class OmnixVoiceService : Service() {
 
@@ -18,7 +20,33 @@ class OmnixVoiceService : Service() {
         super.onCreate()
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification())
+        extractVoskModelIfNeeded()
         VoicePipeline.start(applicationContext)
+    }
+
+    /** Extract vosk-model.zip → filesDir/models/vosk/ on first run. */
+    private fun extractVoskModelIfNeeded() {
+        val modelDir = File(filesDir, WhisperEngine.MODEL_DIR)
+        val zipFile  = File(modelDir, "vosk-model.zip")
+        val extracted = File(modelDir, WhisperEngine.MODEL_FILENAME)
+        if (!zipFile.exists() || extracted.exists()) return
+        try {
+            ZipInputStream(zipFile.inputStream().buffered()).use { zis ->
+                var entry = zis.nextEntry
+                while (entry != null) {
+                    val outFile = File(modelDir, entry.name)
+                    if (entry.isDirectory) {
+                        outFile.mkdirs()
+                    } else {
+                        outFile.parentFile?.mkdirs()
+                        outFile.outputStream().buffered().use { zis.copyTo(it) }
+                    }
+                    zis.closeEntry()
+                    entry = zis.nextEntry
+                }
+            }
+            zipFile.delete()   // free space after extraction
+        } catch (_: Exception) { /* model will stay unextracted; VoicePipeline stays dormant */ }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {

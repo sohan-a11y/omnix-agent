@@ -18,9 +18,7 @@ android {
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
-        // Porcupine key - set in local.properties or environment
-        def porcupineKey = System.getenv("PORCUPINE_KEY") ?: (project.hasProperty("PORCUPINE_KEY") ? project.PORCUPINE_KEY : "")
-        buildConfigField "String", "PORCUPINE_KEY", "\"${porcupineKey}\""
+        // No external API keys needed — wake word uses Sherpa-ONNX, ASR uses Whisper (both free)
     }
 
     signingConfigs {
@@ -104,8 +102,9 @@ dependencies {
     // Coroutines
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0"
 
-    // Porcupine Wake Word Detection
-    implementation "ai.picovoice:porcupine-android:3.0.1"
+    // Vosk — free on-device ASR + wake word, no API key (Apache 2.0)
+    // Grammar mode for "hey omnix" detection; free-form mode for command transcription
+    implementation "com.alphacephei:vosk-android:0.3.47"
 
     // Lifecycle
     implementation "androidx.lifecycle:lifecycle-service:2.8.0"

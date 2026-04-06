@@ -20,6 +20,8 @@ import com.omnix.agent.skills.CorrectionLearner
 import com.omnix.agent.improvements.ProactiveAssistant
 import com.omnix.agent.skills.SkillLibrary
 import com.omnix.agent.voice.TTS
+import com.omnix.agent.voice.WhisperEngine
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -63,11 +65,14 @@ class OnboardingActivity : AppCompatActivity() {
     private fun checkAndProgress() {
         val hasAccessibility = isAccessibilityEnabled()
         val hasOverlay = Settings.canDrawOverlays(this)
-        val hasModel = ModelDownloadManager.isModelDownloaded(this)
+        val hasGemma = ModelDownloadManager.isModelDownloaded(this)
+        val hasWhisper = File(filesDir, "${WhisperEngine.MODEL_DIR}/${WhisperEngine.MODEL_FILENAME}").exists()
 
-        updateUI(hasAccessibility, hasOverlay, hasModel)
+        updateUI(hasAccessibility, hasOverlay, hasGemma)
 
-        if (hasAccessibility && hasOverlay && hasModel) {
+        if (!hasWhisper) enqueueWhisperDownload()
+
+        if (hasAccessibility && hasOverlay && hasGemma) {
             seedDefaultSkills()
         }
     }
@@ -97,15 +102,43 @@ class OnboardingActivity : AppCompatActivity() {
 
     private fun showModelDownloadDialog() {
         AlertDialog.Builder(this)
-            .setTitle("Download Gemma 4 Model")
-            .setMessage("OMNIX requires the Gemma 4 E2B model (~2GB). Download now?")
-            .setPositiveButton("Download") { _, _ ->
-                // Show model URL input or use default
+            .setTitle("Download AI Models")
+            .setMessage(
+                "OMNIX needs 2 models (free, no API keys):\n\n" +
+                "• Gemma 4 E2B   ~2 GB  (intent understanding)\n" +
+                "• Whisper Tiny  ~75 MB  (wake word + speech recognition)\n\n" +
+                "Download over Wi-Fi recommended."
+            )
+            .setPositiveButton("Download All") { _, _ ->
                 ModelDownloadManager.startDownload(this)
-                Toast.makeText(this, "Download started in background", Toast.LENGTH_SHORT).show()
+                enqueueWhisperDownload()
+                Toast.makeText(this, "Downloads started in background", Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("Cancel", null)
             .show()
+    }
+
+    /**
+     * Download Vosk small English model via Android DownloadManager.
+     * The zip is extracted to filesDir/models/vosk/ at first launch.
+     * Model: vosk-model-small-en-us-0.15 (~40 MB, works well for Indian English).
+     */
+    private fun enqueueWhisperDownload() {
+        val destDir = File(filesDir, WhisperEngine.MODEL_DIR).also { it.mkdirs() }
+        val destZip = File(destDir, "vosk-model.zip")
+        // Already extracted
+        if (File(destDir, WhisperEngine.MODEL_FILENAME).exists()) return
+        val url = "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip"
+        val dm = getSystemService(android.app.DownloadManager::class.java)
+        val req = android.app.DownloadManager.Request(android.net.Uri.parse(url))
+            .setTitle("OMNIX: Vosk speech model")
+            .setDescription("Downloading offline speech recognition model (~40 MB)")
+            .setDestinationUri(android.net.Uri.fromFile(destZip))
+            .setAllowedOverMetered(false)
+            .setAllowedOverRoaming(false)
+            .setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+        dm.enqueue(req)
+        // Extraction happens in OmnixVoiceService.onCreate() when model zip is present
     }
 
     private fun startOmnix() {
