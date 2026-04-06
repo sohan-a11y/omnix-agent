@@ -10,6 +10,9 @@ import android.provider.Settings
  */
 object SamsungCompatibilityLayer {
 
+    /** Samsung Galaxy AI event priority delay — re-query UI tree after 50ms */
+    const val GALAXY_AI_EVENT_DELAY_MS = 50L
+
     fun isSamsungDevice(): Boolean =
         Build.MANUFACTURER.lowercase().contains("samsung")
 
@@ -72,5 +75,15 @@ object SamsungCompatibilityLayer {
     fun isSamsungCustomView(className: String): Boolean {
         return className.startsWith("com.samsung") ||
             className.startsWith("com.sec.android")
+    }
+
+    /**
+     * Called after onAccessibilityEvent on Samsung devices.
+     * Galaxy AI events deliver stale UI info; delay 50ms then re-query.
+     */
+    suspend fun applyGalaxyAIEventFix(refreshUiTree: suspend () -> Unit) {
+        if (!isSamsungDevice()) return
+        kotlinx.coroutines.delay(GALAXY_AI_EVENT_DELAY_MS)
+        refreshUiTree()
     }
 }

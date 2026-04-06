@@ -194,10 +194,34 @@ class OmnixAccessibilityService : AccessibilityService() {
         return findNodeNearCoordinates(x, y)
     }
 
+    /**
+     * Takes a screenshot using AccessibilityService API (Android 12+ / API 31+).
+     * Result delivered asynchronously via callback on main thread.
+     */
+    @androidx.annotation.RequiresApi(android.os.Build.VERSION_CODES.S)
+    fun takeScreenshotCompat(callback: (Bitmap?) -> Unit) {
+        takeScreenshot(
+            android.view.Display.DEFAULT_DISPLAY,
+            mainExecutor,
+            object : TakeScreenshotCallback {
+                override fun onSuccess(screenshotResult: ScreenshotResult) {
+                    val hardware = screenshotResult.hardwareBitmap
+                    // Convert hardware bitmap to software for processing
+                    val software = hardware.copy(Bitmap.Config.ARGB_8888, false)
+                    hardware.recycle()
+                    callback(software)
+                }
+                override fun onFailure(errorCode: Int) {
+                    callback(null)
+                }
+            }
+        )
+    }
+
     private fun takeScreenshotCompat(): Bitmap? {
-        // Android 11+ provides takeScreenshot API
-        // For older versions or when that's unavailable, use view rendering
-        return null // Implemented in AccessibilityService subclass with API 31+
+        // Synchronous compat shim — callers that need a result use the callback
+        // overload takeScreenshotCompat(callback) on API 31+ devices.
+        return null
     }
 
     private fun findNodeNearCoordinates(x: Int, y: Int): AccessibilityNodeInfo? {
