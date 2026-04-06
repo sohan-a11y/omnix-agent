@@ -1,25 +1,30 @@
 package com.omnix.agent.ai
 
-import android.app.DownloadManager
-import android.content.BroadcastReceiver
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
-import android.net.Uri
+import android.content.pm.ServiceInfo
 import android.os.Build
-import kotlinx.coroutines.suspendCancellableCoroutine
+import androidx.core.app.NotificationCompat
+import androidx.work.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
-import kotlin.coroutines.resume
+import java.net.HttpURLConnection
+import java.net.URL
 
 /**
- * Downloads the Gemma 4 E2B model using Android DownloadManager.
- * Spec requires DownloadManager (not WorkManager+HTTP) for model download.
+ * Downloads the Gemma 4 E2B model (~2.6 GB) via WorkManager to filesDir.
+ *
+ * Android DownloadManager cannot write to internal storage (SecurityException),
+ * so we use a CoroutineWorker + URL.openStream() instead.
  */
 object ModelDownloadManager {
 
     const val MODEL_URL = "https://huggingface.co/google/gemma-4-e2b-it-litert/resolve/main/gemma-4-e2b.litertlm"
     const val MODEL_FILENAME = "gemma-4-e2b.litertlm"
     private const val MODELS_DIR = "models"
+    private const val WORK_TAG = "gemma_download"
 
     fun getModelFile(context: Context): File =
         File(context.filesDir, "$MODELS_DIR/$MODEL_FILENAME")
@@ -31,72 +36,122 @@ object ModelDownloadManager {
 
     fun getModelPath(context: Context): String = getModelFile(context).absolutePath
 
-    fun startDownload(context: Context): Long {
-        val modelsDir = File(context.filesDir, MODELS_DIR)
-        modelsDir.mkdirs()
+    /** Enqueues a background download (Wi-Fi only). Safe to call multiple times — only one runs. */
+    fun startDownload(context: Context) {
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.UNMETERED)
+            .build()
+        val request = OneTimeWorkRequestBuilder<GemmaDownloadWorker>()
+            .setConstraints(constraints)
+            .addTag(WORK_TAG)
+            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+            .build()
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            WORK_TAG,
+            ExistingWorkPolicy.KEEP,
+            request
+        )
+    }
+}
 
-        val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        val request = DownloadManager.Request(Uri.parse(MODEL_URL)).apply {
-            setTitle("OMNIX — Downloading AI model")
-            setDescription("Downloading Gemma 4 E2B (~2.6 GB). Please stay connected to Wi-Fi.")
-            setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            setDestinationUri(Uri.fromFile(getModelFile(context)))
-            setAllowedOverMetered(false)
-            setAllowedOverRoaming(false)
-        }
-        return dm.enqueue(request)
+class GemmaDownloadWorker(
+    private val context: Context,
+    workerParams: WorkerParameters
+) : CoroutineWorker(context, workerParams) {
+
+    companion object {
+        private const val NOTIF_CHANNEL = "omnix_download"
+        private const val NOTIF_ID = 201
+        private const val BUFFER_SIZE = 128 * 1024   // 128 KB
     }
 
-    suspend fun awaitDownload(context: Context, downloadId: Long): Boolean =
-        suspendCancellableCoroutine { cont ->
-            val receiver = object : BroadcastReceiver() {
-                override fun onReceive(ctx: Context, intent: Intent) {
-                    val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L)
-                    if (id != downloadId) return
+    override suspend fun getForegroundInfo(): ForegroundInfo {
+        createChannel()
+        val notif = buildNotification(0)
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ForegroundInfo(NOTIF_ID, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        } else {
+            ForegroundInfo(NOTIF_ID, notif)
+        }
+    }
 
-                    val dm = ctx.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-                    val cursor = dm.query(DownloadManager.Query().setFilterById(downloadId))
-                    val success = if (cursor.moveToFirst()) {
-                        val status = cursor.getInt(
-                            cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)
-                        )
-                        status == DownloadManager.STATUS_SUCCESSFUL
-                    } else false
-                    cursor.close()
+    override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        createChannel()
+        try { setForeground(getForegroundInfo()) } catch (_: Exception) { /* API < 31 fallback */ }
 
-                    context.unregisterReceiver(this)
-                    if (cont.isActive) cont.resume(success)
+        val modelsDir = File(context.filesDir, "models").also { it.mkdirs() }
+        val destFile  = File(modelsDir, ModelDownloadManager.MODEL_FILENAME)
+        val tmpFile   = File(modelsDir, "${ModelDownloadManager.MODEL_FILENAME}.tmp")
+
+        if (destFile.exists()) return@withContext Result.success()
+
+        try {
+            var conn = URL(ModelDownloadManager.MODEL_URL).openConnection() as HttpURLConnection
+            conn.instanceFollowRedirects = true
+            conn.connectTimeout = 30_000
+            conn.readTimeout    = 60_000
+            conn.connect()
+
+            // Follow redirects manually if needed (HuggingFace uses 302)
+            var redirects = 0
+            while (conn.responseCode in 300..399 && redirects < 5) {
+                val location = conn.getHeaderField("Location") ?: break
+                conn.disconnect()
+                conn = URL(location).openConnection() as HttpURLConnection
+                conn.instanceFollowRedirects = true
+                conn.connectTimeout = 30_000
+                conn.readTimeout    = 60_000
+                conn.connect()
+                redirects++
+            }
+
+            val total = conn.contentLengthLong
+            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+            conn.inputStream.buffered(BUFFER_SIZE).use { input ->
+                tmpFile.outputStream().buffered(BUFFER_SIZE).use { output ->
+                    var downloaded = 0L
+                    var lastPercent = -1
+                    val buf = ByteArray(BUFFER_SIZE)
+                    var read: Int
+                    while (input.read(buf).also { read = it } != -1) {
+                        output.write(buf, 0, read)
+                        downloaded += read
+                        if (total > 0) {
+                            val pct = ((downloaded * 100) / total).toInt()
+                            if (pct != lastPercent) {
+                                lastPercent = pct
+                                nm.notify(NOTIF_ID, buildNotification(pct))
+                            }
+                        }
+                    }
                 }
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                context.registerReceiver(
-                    receiver,
-                    IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
-                    Context.RECEIVER_NOT_EXPORTED
-                )
-            } else {
-                @Suppress("UnspecifiedRegisterReceiverFlag")
-                context.registerReceiver(
-                    receiver,
-                    IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
-                )
-            }
-            cont.invokeOnCancellation {
-                try { context.unregisterReceiver(receiver) } catch (e: Exception) { /* already unregistered */ }
-            }
-        }
 
-    fun getProgress(context: Context, downloadId: Long): Int {
-        val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        val cursor = dm.query(DownloadManager.Query().setFilterById(downloadId))
-        if (!cursor.moveToFirst()) { cursor.close(); return -1 }
-        val downloaded = cursor.getLong(
-            cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)
-        )
-        val total = cursor.getLong(
-            cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)
-        )
-        cursor.close()
-        return if (total > 0) ((downloaded * 100) / total).toInt() else -1
+            conn.disconnect()
+            tmpFile.renameTo(destFile)
+            nm.cancel(NOTIF_ID)
+            Result.success()
+        } catch (e: Exception) {
+            tmpFile.delete()
+            if (runAttemptCount < 3) Result.retry() else Result.failure()
+        }
     }
+
+    private fun createChannel() {
+        val ch = NotificationChannel(
+            NOTIF_CHANNEL, "OMNIX Downloads", NotificationManager.IMPORTANCE_LOW
+        )
+        (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+            .createNotificationChannel(ch)
+    }
+
+    private fun buildNotification(percent: Int): android.app.Notification =
+        NotificationCompat.Builder(context, NOTIF_CHANNEL)
+            .setContentTitle("Downloading Gemma AI model")
+            .setContentText(if (percent > 0) "$percent% · ~2.6 GB total" else "Starting download…")
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setProgress(100, percent, percent == 0)
+            .setOngoing(true)
+            .build()
 }

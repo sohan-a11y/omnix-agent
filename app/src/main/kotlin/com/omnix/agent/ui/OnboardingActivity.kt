@@ -43,7 +43,25 @@ class OnboardingActivity : AppCompatActivity() {
         CorrectionLearner.init(this)
 
         setupUI()
+        requestRuntimePermissions()
         checkAndProgress()
+    }
+
+    private fun requestRuntimePermissions() {
+        val needed = mutableListOf(
+            Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.READ_CONTACTS,
+            Manifest.permission.READ_SMS,
+            Manifest.permission.CALL_PHONE,
+            Manifest.permission.SEND_SMS,
+            Manifest.permission.READ_CALENDAR,
+            Manifest.permission.WRITE_CALENDAR,
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.POST_NOTIFICATIONS
+        ).filter {
+            checkSelfPermission(it) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        }.toTypedArray()
+        if (needed.isNotEmpty()) permissionLauncher.launch(needed)
     }
 
     private fun setupUI() {
@@ -78,7 +96,19 @@ class OnboardingActivity : AppCompatActivity() {
     }
 
     private fun updateUI(accessibility: Boolean, overlay: Boolean, model: Boolean) {
-        // Update checkmarks and status
+        findViewById<Button>(R.id.btn_grant_accessibility)?.apply {
+            text = if (accessibility) "✓ Accessibility Enabled" else "Open Accessibility Settings"
+            isEnabled = !accessibility
+        }
+        findViewById<Button>(R.id.btn_grant_overlay)?.apply {
+            text = if (overlay) "✓ Overlay Granted" else "Grant Overlay Permission"
+            isEnabled = !overlay
+        }
+        findViewById<Button>(R.id.btn_download_model)?.apply {
+            text = if (model) "✓ Gemma Model Ready" else "Download Gemma 4 Model (~2 GB)"
+            isEnabled = !model
+        }
+        findViewById<Button>(R.id.btn_start)?.isEnabled = accessibility && overlay
     }
 
     private fun isAccessibilityEnabled(): Boolean {
