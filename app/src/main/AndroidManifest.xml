@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    package="com.omnix.agent">
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Audio -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
@@ -148,6 +147,12 @@
         <activity
             android:name=".ui.SystemTestActivity"
             android:exported="false" />
+
+        <!-- WorkManager foreground service — must declare dataSync type for GemmaDownloadWorker -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
 
         <!-- WorkManager provider -->
         <provider

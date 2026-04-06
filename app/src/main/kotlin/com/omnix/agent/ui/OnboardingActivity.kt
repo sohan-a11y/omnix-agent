@@ -7,10 +7,13 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.view.View
 import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
 import com.omnix.agent.R
 import com.omnix.agent.ai.GemmaInferenceEngine
 import com.omnix.agent.ai.ModelDownloadManager
@@ -30,13 +33,21 @@ class OnboardingActivity : AppCompatActivity() {
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { results ->
-        checkAndProgress()
-    }
+    ) { checkAndProgress() }
+
+    private lateinit var progressBar: ProgressBar
+    private lateinit var tvDownloadStatus: TextView
+    private lateinit var tvVoskStatus: TextView
+    private lateinit var btnDownload: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_onboarding)
+
+        progressBar     = findViewById(R.id.progress_download)
+        tvDownloadStatus = findViewById(R.id.tv_download_status)
+        tvVoskStatus    = findViewById(R.id.tv_vosk_status)
+        btnDownload     = findViewById(R.id.btn_download_model)
 
         TTS.initialize(this)
         OmnixOrchestrator.initialize(this)
@@ -45,10 +56,11 @@ class OnboardingActivity : AppCompatActivity() {
         setupUI()
         requestRuntimePermissions()
         checkAndProgress()
+        observeGemmaDownload()
     }
 
     private fun requestRuntimePermissions() {
-        val needed = mutableListOf(
+        val perms = mutableListOf(
             Manifest.permission.RECORD_AUDIO,
             Manifest.permission.READ_CONTACTS,
             Manifest.permission.READ_SMS,
@@ -61,38 +73,85 @@ class OnboardingActivity : AppCompatActivity() {
         ).filter {
             checkSelfPermission(it) != android.content.pm.PackageManager.PERMISSION_GRANTED
         }.toTypedArray()
-        if (needed.isNotEmpty()) permissionLauncher.launch(needed)
+        if (perms.isNotEmpty()) permissionLauncher.launch(perms)
     }
 
     private fun setupUI() {
-        // Setup button click listeners
         findViewById<Button>(R.id.btn_grant_accessibility)?.setOnClickListener {
-            openAccessibilitySettings()
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
         findViewById<Button>(R.id.btn_grant_overlay)?.setOnClickListener {
-            openOverlaySettings()
+            startActivity(Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:$packageName")
+            ))
         }
-        findViewById<Button>(R.id.btn_download_model)?.setOnClickListener {
-            showModelDownloadDialog()
-        }
-        findViewById<Button>(R.id.btn_start)?.setOnClickListener {
-            startOmnix()
-        }
+        btnDownload.setOnClickListener { showModelDownloadDialog() }
+        findViewById<Button>(R.id.btn_start)?.setOnClickListener { startOmnix() }
+    }
+
+    // ── WorkManager observation for live download progress ────────────────────
+    private fun observeGemmaDownload() {
+        WorkManager.getInstance(this)
+            .getWorkInfosByTagLiveData("gemma_download")
+            .observe(this) { infos ->
+                val info = infos?.firstOrNull() ?: return@observe
+                when (info.state) {
+                    WorkInfo.State.ENQUEUED, WorkInfo.State.BLOCKED -> {
+                        progressBar.visibility = View.VISIBLE
+                        tvDownloadStatus.visibility = View.VISIBLE
+                        progressBar.isIndeterminate = true
+                        tvDownloadStatus.text = "Gemma download queued — waiting for Wi-Fi…"
+                        btnDownload.isEnabled = false
+                    }
+                    WorkInfo.State.RUNNING -> {
+                        progressBar.visibility = View.VISIBLE
+                        tvDownloadStatus.visibility = View.VISIBLE
+                        progressBar.isIndeterminate = false
+                        // Progress is reported via notification; show indeterminate here
+                        progressBar.isIndeterminate = true
+                        tvDownloadStatus.text = "Downloading Gemma AI model… check notification for %"
+                        btnDownload.isEnabled = false
+                    }
+                    WorkInfo.State.SUCCEEDED -> {
+                        progressBar.visibility = View.GONE
+                        tvDownloadStatus.visibility = View.GONE
+                        btnDownload.text = "✓ Gemma Model Ready"
+                        btnDownload.isEnabled = false
+                        checkAndProgress()
+                    }
+                    WorkInfo.State.FAILED -> {
+                        progressBar.visibility = View.GONE
+                        tvDownloadStatus.visibility = View.VISIBLE
+                        tvDownloadStatus.text = "Download failed — check Wi-Fi and try again"
+                        btnDownload.isEnabled = true
+                        btnDownload.text = "Retry Download"
+                    }
+                    WorkInfo.State.CANCELLED -> {
+                        progressBar.visibility = View.GONE
+                        tvDownloadStatus.visibility = View.GONE
+                        btnDownload.isEnabled = true
+                    }
+                }
+            }
     }
 
     private fun checkAndProgress() {
         val hasAccessibility = isAccessibilityEnabled()
-        val hasOverlay = Settings.canDrawOverlays(this)
-        val hasGemma = ModelDownloadManager.isModelDownloaded(this)
-        val hasWhisper = File(filesDir, "${WhisperEngine.MODEL_DIR}/${WhisperEngine.MODEL_FILENAME}").exists()
+        val hasOverlay       = Settings.canDrawOverlays(this)
+        val hasGemma         = ModelDownloadManager.isModelDownloaded(this)
+        val hasVosk          = File(filesDir, "${WhisperEngine.MODEL_DIR}/${WhisperEngine.MODEL_FILENAME}").exists()
 
         updateUI(hasAccessibility, hasOverlay, hasGemma)
 
-        if (!hasWhisper) enqueueWhisperDownload()
-
-        if (hasAccessibility && hasOverlay && hasGemma) {
-            seedDefaultSkills()
+        // Vosk status
+        tvVoskStatus.text = when {
+            hasVosk -> "✓ Voice model ready"
+            else    -> "Downloading voice model (~40 MB)…"
         }
+        if (!hasVosk) enqueueVoskDownload()
+
+        if (hasAccessibility && hasOverlay && hasGemma) seedDefaultSkills()
     }
 
     private fun updateUI(accessibility: Boolean, overlay: Boolean, model: Boolean) {
@@ -104,56 +163,49 @@ class OnboardingActivity : AppCompatActivity() {
             text = if (overlay) "✓ Overlay Granted" else "Grant Overlay Permission"
             isEnabled = !overlay
         }
-        findViewById<Button>(R.id.btn_download_model)?.apply {
+        btnDownload.apply {
             text = if (model) "✓ Gemma Model Ready" else "Download Gemma 4 Model (~2 GB)"
             isEnabled = !model
+        }
+        if (model) {
+            progressBar.visibility = View.GONE
+            tvDownloadStatus.visibility = View.GONE
         }
         findViewById<Button>(R.id.btn_start)?.isEnabled = accessibility && overlay
     }
 
     private fun isAccessibilityEnabled(): Boolean {
-        val settingValue = Settings.Secure.getString(
+        val v = Settings.Secure.getString(
             contentResolver,
             Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
         ) ?: return false
-        return settingValue.contains(packageName)
-    }
-
-    private fun openAccessibilitySettings() {
-        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-    }
-
-    private fun openOverlaySettings() {
-        startActivity(Intent(
-            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-            Uri.parse("package:$packageName")
-        ))
+        return v.contains(packageName)
     }
 
     private fun showModelDownloadDialog() {
         AlertDialog.Builder(this)
-            .setTitle("Download AI Models")
+            .setTitle("Download AI Model")
             .setMessage(
-                "OMNIX needs 2 models (free, no API keys):\n\n" +
-                "• Gemma 4 E2B   ~2 GB  (intent understanding)\n" +
-                "• Whisper Tiny  ~75 MB  (wake word + speech recognition)\n\n" +
-                "Download over Wi-Fi recommended."
+                "OMNIX needs the Gemma 4 AI model (~2 GB) for smart intent understanding.\n\n" +
+                "Download starts automatically over Wi-Fi and continues in the background.\n\n" +
+                "Note: HuggingFace account required — if download fails, you can download " +
+                "the file manually from huggingface.co/google/gemma-4-e2b-it-litert and " +
+                "place it at:\n${ModelDownloadManager.getModelFile(this).absolutePath}"
             )
-            .setPositiveButton("Download All") { _, _ ->
+            .setPositiveButton("Start Download") { _, _ ->
                 ModelDownloadManager.startDownload(this)
-                enqueueWhisperDownload()
-                Toast.makeText(this, "Downloads started in background", Toast.LENGTH_SHORT).show()
+                enqueueVoskDownload()
+                Toast.makeText(this, "Download started — check notification bar for progress", Toast.LENGTH_LONG).show()
             }
             .setNegativeButton("Cancel", null)
             .show()
     }
 
     /**
-     * Download Vosk small English model directly to filesDir using a coroutine.
-     * DownloadManager cannot write to internal storage (SecurityException), so we
-     * use URL.openStream() instead — works for any internal path, no permissions needed.
+     * Download Vosk model directly to filesDir with URL.openStream().
+     * DownloadManager cannot write to internal storage (SecurityException).
      */
-    private fun enqueueWhisperDownload() {
+    private fun enqueueVoskDownload() {
         val destDir = File(filesDir, WhisperEngine.MODEL_DIR).also { it.mkdirs() }
         val destZip = File(destDir, "vosk-model.zip")
         if (File(destDir, WhisperEngine.MODEL_FILENAME).exists() || destZip.exists()) return
@@ -161,10 +213,7 @@ class OnboardingActivity : AppCompatActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(
-                        this@OnboardingActivity,
-                        "Downloading speech model (~40 MB)…", Toast.LENGTH_LONG
-                    ).show()
+                    tvVoskStatus.text = "Downloading voice model (~40 MB)…"
                 }
                 val url = java.net.URL(
                     "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip"
@@ -173,18 +222,13 @@ class OnboardingActivity : AppCompatActivity() {
                     destZip.outputStream().buffered().use { input.copyTo(it) }
                 }
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(
-                        this@OnboardingActivity,
-                        "Speech model ready. Restart OMNIX to activate voice.", Toast.LENGTH_LONG
-                    ).show()
+                    tvVoskStatus.text = "✓ Voice model downloaded — restart to activate"
+                    checkAndProgress()
                 }
             } catch (e: Exception) {
-                destZip.delete()   // clean up partial file
+                destZip.delete()
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(
-                        this@OnboardingActivity,
-                        "Model download failed — check Wi-Fi and try again.", Toast.LENGTH_LONG
-                    ).show()
+                    tvVoskStatus.text = "Voice model download failed — check Wi-Fi"
                 }
             }
         }
@@ -193,16 +237,13 @@ class OnboardingActivity : AppCompatActivity() {
     private fun startOmnix() {
         GemmaInferenceEngine.initialize(this)
         TTS.speak("OMNIX is ready. Say Hey OMNIX to start.", TTS.QUEUE_FLUSH)
-        // Navigate to main screen or minimize
         moveTaskToBack(true)
     }
 
     private fun seedDefaultSkills() {
         lifecycleScope.launch(Dispatchers.IO) {
             val db = OmnixDatabase.getInstance(applicationContext)
-            // Seed all 15+ pre-built skills (idempotent)
             SkillLibrary.seedAll(applicationContext, db)
-            // Start proactive monitoring
             ProactiveAssistant.start(applicationContext, db)
         }
     }

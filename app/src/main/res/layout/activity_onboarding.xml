@@ -29,7 +29,7 @@
             android:textSize="16sp"
             android:textColor="#90CAF9"
             android:gravity="center"
-            android:layout_marginBottom="48dp" />
+            android:layout_marginBottom="40dp" />
 
         <!-- Step 1: Accessibility -->
         <TextView
@@ -69,7 +69,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Step 3: Download Gemma 4 AI Model (~2GB)"
+            android:text="Step 3: Download Gemma 4 AI Model (~2 GB, Wi-Fi recommended)"
             android:textColor="#FFFFFF"
             android:textSize="16sp"
             android:textStyle="bold"
@@ -80,6 +80,47 @@
             android:layout_width="match_parent"
             android:layout_height="48dp"
             android:text="Download Gemma 4 Model"
+            android:layout_marginBottom="8dp" />
+
+        <!-- Download progress (hidden until download starts) -->
+        <ProgressBar
+            android:id="@+id/progress_download"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="12dp"
+            android:max="100"
+            android:progress="0"
+            android:visibility="gone"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:id="@+id/tv_download_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textColor="#90CAF9"
+            android:textSize="13sp"
+            android:gravity="center"
+            android:visibility="gone"
+            android:layout_marginBottom="24dp" />
+
+        <!-- Step 4: Speech Model (auto) -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Step 4: Voice Model (Vosk ~40 MB, downloads automatically)"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:id="@+id/tv_vosk_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Checking voice model…"
+            android:textColor="#90CAF9"
+            android:textSize="14sp"
             android:layout_marginBottom="24dp" />
 
         <!-- Start Button -->
@@ -89,7 +130,7 @@
             android:layout_height="56dp"
             android:text="Start OMNIX"
             android:textSize="18sp"
-            android:layout_marginTop="16dp" />
+            android:layout_marginTop="8dp" />
 
     </LinearLayout>
 </ScrollView>
