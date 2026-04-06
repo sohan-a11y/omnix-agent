@@ -29,26 +29,11 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      # ── Debug APK (every push to master/main) ─────────────────────────────
-      - name: Build Debug APK
-        if: "!startsWith(github.ref, 'refs/tags/v')"
-        run: ./gradlew assembleDebug
-
-      - name: Upload Debug APK
-        if: "!startsWith(github.ref, 'refs/tags/v')"
-        uses: actions/upload-artifact@v4
-        with:
-          name: OMNIX-debug-${{ github.sha }}
-          path: app/build/outputs/apk/debug/*.apk
-          retention-days: 14
-
-      # ── Signed Release APK (on v* tags only) ──────────────────────────────
       - name: Decode Keystore
-        if: startsWith(github.ref, 'refs/tags/v')
         run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > keystore.jks
 
-      - name: Build Release APK
-        if: startsWith(github.ref, 'refs/tags/v')
+      # ── Signed Release APK (every push to master/main + tags) ─────────────
+      - name: Build Signed Release APK
         run: ./gradlew assembleRelease
         env:
           KEYSTORE_PATH: ${{ github.workspace }}/keystore.jks
@@ -56,6 +41,15 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
+      - name: Upload Signed APK as Artifact
+        if: "!startsWith(github.ref, 'refs/tags/v')"
+        uses: actions/upload-artifact@v4
+        with:
+          name: OMNIX-signed-${{ github.sha }}
+          path: app/build/outputs/apk/release/*.apk
+          retention-days: 30
+
+      # ── GitHub Release (on v* tags only) ──────────────────────────────────
       - name: Upload to GitHub Releases
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
