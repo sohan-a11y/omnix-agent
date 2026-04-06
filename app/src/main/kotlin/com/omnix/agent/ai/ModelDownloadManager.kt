@@ -14,7 +14,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * Downloads the Gemma 4 E2B model (~2.6 GB) to filesDir via WorkManager.
+ * Downloads the Gemma 4 E2B model (~2.58 GB) to filesDir via WorkManager.
  *
  * Why WorkManager and not DownloadManager:
  *   DownloadManager.setDestinationUri(Uri.fromFile(filesDir/...)) throws
@@ -27,11 +27,15 @@ import java.net.URL
  *   (currently Pixel 9+ / Android 15 dev preview).  Samsung S25 Ultra has its
  *   own Galaxy AI stack, which is NOT the same Android AICore. We therefore
  *   always try the local file path and fall back to "not ready" when absent.
+ *
+ * Model source: litert-community/gemma-4-E2B-it-litert-lm (PUBLIC — no HF token needed)
+ * Correct URL confirmed April 2026. Old google/gemma-4-e2b-it-litert repo does NOT exist.
  */
 object ModelDownloadManager {
 
-    const val MODEL_URL      = "https://huggingface.co/google/gemma-4-e2b-it-litert/resolve/main/gemma-4-e2b.litertlm"
-    const val MODEL_FILENAME = "gemma-4-e2b.litertlm"
+    // ✅ CORRECT URL — litert-community public repo, no auth token needed
+    const val MODEL_URL      = "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm"
+    const val MODEL_FILENAME = "gemma-4-E2B-it.litertlm"
     private const val MODELS_DIR = "models"
     internal const val WORK_TAG  = "gemma_download"
 
@@ -51,15 +55,16 @@ object ModelDownloadManager {
      */
     fun startDownload(context: Context) {
         val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.UNMETERED)
+            .setRequiredNetworkType(NetworkType.CONNECTED)   // any network, not just Wi-Fi
             .build()
         val request = OneTimeWorkRequestBuilder<GemmaDownloadWorker>()
             .setConstraints(constraints)
             .addTag(WORK_TAG)
             .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .build()
+        // REPLACE cancels any stuck/queued job and starts fresh with current token+constraints
         WorkManager.getInstance(context)
-            .enqueueUniqueWork(WORK_TAG, ExistingWorkPolicy.KEEP, request)
+            .enqueueUniqueWork(WORK_TAG, ExistingWorkPolicy.REPLACE, request)
     }
 }
 
@@ -105,8 +110,7 @@ class GemmaDownloadWorker(
             if (responseCode == HttpURLConnection.HTTP_UNAUTHORIZED ||
                 responseCode == HttpURLConnection.HTTP_FORBIDDEN) {
                 nm.notify(NOTIF_ID, buildNotification(-1,
-                    "Download failed: HuggingFace login required. " +
-                    "Accept Gemma terms at huggingface.co, then retry."))
+                    "Auth error ($responseCode) — open OMNIX, tap 'Download Gemma 4 Model', enter your HuggingFace token."))
                 conn.disconnect()
                 return@withContext Result.failure()   // don't retry auth errors
             }
@@ -133,6 +137,14 @@ class GemmaDownloadWorker(
                                 lastPct = pct
                                 nm.notify(NOTIF_ID, buildNotification(pct,
                                     "$pct% · ${mb(downloaded)} / ${mb(total)} MB"))
+                                // Push progress to WorkManager so UI can observe it
+                                setProgress(
+                                    androidx.work.workDataOf(
+                                        "pct" to pct,
+                                        "downloaded_mb" to mb(downloaded),
+                                        "total_mb" to mb(total)
+                                    )
+                                )
                             }
                         }
                     }
@@ -152,6 +164,7 @@ class GemmaDownloadWorker(
     }
 
     private fun openConnectionWithRedirects(startUrl: String): HttpURLConnection {
+        val hfToken = EncryptedPrefsManager.getHfToken(context)
         var url = startUrl
         var conn: HttpURLConnection
         var redirects = 0
@@ -163,6 +176,10 @@ class GemmaDownloadWorker(
             // HuggingFace needs a browser-like User-Agent to avoid 403
             conn.setRequestProperty("User-Agent",
                 "Mozilla/5.0 (Android; OMNIX-Agent/1.0) AppleWebKit/537.36")
+            // HuggingFace gated models require Bearer token auth
+            if (hfToken != null) {
+                conn.setRequestProperty("Authorization", "Bearer $hfToken")
+            }
             conn.connect()
             val code = conn.responseCode
             if (code in 300..399 && redirects < MAX_REDIRECTS) {

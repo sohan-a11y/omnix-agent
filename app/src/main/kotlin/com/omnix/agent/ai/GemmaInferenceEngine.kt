@@ -29,7 +29,7 @@ object GemmaInferenceEngine {
             }
         }
 
-        val modelFile = File(context.filesDir, "models/gemma-4-e2b.litertlm")
+        val modelFile = ModelDownloadManager.getModelFile(context)
         if (!modelFile.exists()) return // Not downloaded yet - will init after download
 
         try {

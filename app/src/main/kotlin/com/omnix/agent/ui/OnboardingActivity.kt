@@ -107,11 +107,18 @@ class OnboardingActivity : AppCompatActivity() {
                     WorkInfo.State.RUNNING -> {
                         progressBar.visibility = View.VISIBLE
                         tvDownloadStatus.visibility = View.VISIBLE
-                        progressBar.isIndeterminate = false
-                        // Progress is reported via notification; show indeterminate here
-                        progressBar.isIndeterminate = true
-                        tvDownloadStatus.text = "Downloading Gemma AI model… check notification for %"
                         btnDownload.isEnabled = false
+                        val pct = info.progress.getInt("pct", -1)
+                        val dlMb = info.progress.getLong("downloaded_mb", 0)
+                        val totMb = info.progress.getLong("total_mb", 0)
+                        if (pct >= 0 && totMb > 0) {
+                            progressBar.isIndeterminate = false
+                            progressBar.progress = pct
+                            tvDownloadStatus.text = "$pct% — ${dlMb} MB / ${totMb} MB downloaded"
+                        } else {
+                            progressBar.isIndeterminate = true
+                            tvDownloadStatus.text = "Connecting to HuggingFace…"
+                        }
                     }
                     WorkInfo.State.SUCCEEDED -> {
                         progressBar.visibility = View.GONE
@@ -184,18 +191,17 @@ class OnboardingActivity : AppCompatActivity() {
 
     private fun showModelDownloadDialog() {
         AlertDialog.Builder(this)
-            .setTitle("Download AI Model")
+            .setTitle("Download Gemma 4 AI Model (~2.6 GB)")
             .setMessage(
-                "OMNIX needs the Gemma 4 AI model (~2 GB) for smart intent understanding.\n\n" +
-                "Download starts automatically over Wi-Fi and continues in the background.\n\n" +
-                "Note: HuggingFace account required — if download fails, you can download " +
-                "the file manually from huggingface.co/google/gemma-4-e2b-it-litert and " +
-                "place it at:\n${ModelDownloadManager.getModelFile(this).absolutePath}"
+                "This will download the Gemma 4 E2B model (~2.6 GB) from HuggingFace.\n\n" +
+                "✅ No account or token required — it's a public model!\n\n" +
+                "Make sure you're on Wi-Fi or have enough mobile data before starting.\n\n" +
+                "The download runs in the background — you can leave the app and it will continue."
             )
             .setPositiveButton("Start Download") { _, _ ->
                 ModelDownloadManager.startDownload(this)
                 enqueueVoskDownload()
-                Toast.makeText(this, "Download started — check notification bar for progress", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Download started — watch progress bar above", Toast.LENGTH_LONG).show()
             }
             .setNegativeButton("Cancel", null)
             .show()
