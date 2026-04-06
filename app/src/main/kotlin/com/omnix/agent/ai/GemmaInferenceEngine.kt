@@ -4,7 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.os.Build
 import android.util.Base64
-import com.google.ai.edge.litert.lm.LlmInference
+import com.google.mediapipe.tasks.genai.llminference.LlmInference
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
@@ -35,9 +35,7 @@ object GemmaInferenceEngine {
         try {
             val options = LlmInference.LlmInferenceOptions.builder()
                 .setModelPath(modelFile.absolutePath)
-                .setMaxTokens(128_000)
-                .setMaxTopK(64)
-                .setTemperature(0.7f)
+                .setMaxTokens(4096)
                 .build()
             session = LlmInference.createFromOptions(context, options)
         } catch (e: Exception) {

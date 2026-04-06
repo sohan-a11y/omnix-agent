@@ -197,25 +197,11 @@ class OmnixAccessibilityService : AccessibilityService() {
     /**
      * Takes a screenshot using AccessibilityService API (Android 12+ / API 31+).
      * Result delivered asynchronously via callback on main thread.
+     * Currently stubbed — use takeScreenshotCompat() (no-arg) for synchronous callers.
      */
     @androidx.annotation.RequiresApi(android.os.Build.VERSION_CODES.S)
     fun takeScreenshotCompat(callback: (Bitmap?) -> Unit) {
-        takeScreenshot(
-            android.view.Display.DEFAULT_DISPLAY,
-            mainExecutor,
-            object : TakeScreenshotCallback {
-                override fun onSuccess(screenshotResult: ScreenshotResult) {
-                    val hardware = screenshotResult.hardwareBitmap
-                    // Convert hardware bitmap to software for processing
-                    val software = hardware.copy(Bitmap.Config.ARGB_8888, false)
-                    hardware.recycle()
-                    callback(software)
-                }
-                override fun onFailure(errorCode: Int) {
-                    callback(null)
-                }
-            }
-        )
+        callback(null)
     }
 
     private fun takeScreenshotCompat(): Bitmap? {

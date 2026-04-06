@@ -87,7 +87,7 @@ object VoicePipeline {
 
     private suspend fun onWakeWordDetected(ctx: Context) {
         // Pre-warm likely apps immediately on wake word
-        AppPreLauncher.warmUp(ctx)
+        AppPreLauncher.prewarmTopApps(ctx)
         TTS.speak("Yes?", TTS.QUEUE_FLUSH)
 
         // Capture user command via ASR

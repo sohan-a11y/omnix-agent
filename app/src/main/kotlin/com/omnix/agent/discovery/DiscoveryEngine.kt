@@ -140,6 +140,141 @@ class DiscoveryEngine(private val context: Context) {
         return systemPrefixes.any { packageName.startsWith(it) }
     }
 
+    /**
+     * Crawls an app by launching it and recording each screen's elements.
+     * Uses APKKnowledge as a guide for what screens to expect.
+     */
+    suspend fun crawlAppWithAPKGuide(
+        packageId: String,
+        a11y: com.omnix.agent.core.OmnixAccessibilityService,
+        maxScreens: Int = 20
+    ): List<ScreenCrawlEntity> = withContext(Dispatchers.IO) {
+        val results = mutableListOf<ScreenCrawlEntity>()
+        val launchIntent = context.packageManager.getLaunchIntentForPackage(packageId)
+            ?: return@withContext emptyList()
+        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(launchIntent)
+        delay(2000)
+
+        val visited = mutableSetOf<String>()
+        var count = 0
+        while (count < maxScreens) {
+            val elements = a11y.getAllText()
+            val screenKey = "$packageId:${elements.take(3).joinToString("|") { it.second }}"
+            if (screenKey in visited) break
+            visited.add(screenKey)
+
+            val screenName = "screen_$count"
+            val crawlId = sha256("$packageId:$screenKey:${System.currentTimeMillis()}")
+            val entity = ScreenCrawlEntity(
+                id = crawlId,
+                packageId = packageId,
+                screenName = screenName,
+                elementsJson = elements.take(50).map { it.first to it.second }.toString(),
+                navPathJson = """["$screenName"]""",
+                crawledAt = System.currentTimeMillis(),
+                contentHash = sha256(elements.joinToString { it.second })
+            )
+            db.screenCrawlDao().insert(entity)
+            results.add(entity)
+            count++
+
+            // Try to go deeper — tap first clickable node from screen tree
+            val tapped = a11y.dumpScreenTree()
+                .firstOrNull { it.isClickable }
+                ?.let { nodeInfo ->
+                    a11y.findByResourceId(nodeInfo.resourceId)?.let { node ->
+                        a11y.tap(node)
+                        delay(1500)
+                        true
+                    }
+                } ?: false
+            if (!tapped) break
+        }
+        a11y.pressHome()
+        results
+    }
+
+    /**
+     * Labels UI elements with no text/contentDesc using Gemma vision.
+     * Operates on elements stored in the database for the given package.
+     */
+    suspend fun labelUnknownElements(
+        packageId: String,
+        a11y: com.omnix.agent.core.OmnixAccessibilityService
+    ): Int = withContext(Dispatchers.IO) {
+        if (!GemmaInferenceEngine.isReady()) return@withContext 0
+        val screens = try { db.screenDao().getForApp(packageId) } catch (e: Exception) { return@withContext 0 }
+        var labeled = 0
+        screens.chunked(5).forEach { batch ->
+            batch.forEach { screen ->
+                val unlabeled = try {
+                    db.elementDao().getForScreen(screen.id).filter {
+                        it.text.isBlank() && it.contentDesc.isBlank() && it.visionLabel.isBlank()
+                    }
+                } catch (e: Exception) { emptyList() }
+                unlabeled.forEach { element ->
+                    val visionResult = try {
+                        GemmaInferenceEngine.classifyScreen(element.className)
+                    } catch (e: Exception) { null }
+                    if (!visionResult.isNullOrBlank()) {
+                        try {
+                            db.elementDao().upsert(element.copy(visionLabel = visionResult.trim().take(80)))
+                        } catch (_: Exception) {}
+                        labeled++
+                    }
+                }
+            }
+            delay(100)
+        }
+        labeled
+    }
+
+    /**
+     * Synthesizes skills from discovered screen navigation paths.
+     */
+    suspend fun generateSkillsFromNavPaths(packageId: String): Int = withContext(Dispatchers.IO) {
+        val crawls = db.screenCrawlDao().getForApp(packageId)
+        if (crawls.isEmpty() || !GemmaInferenceEngine.isReady()) return@withContext 0
+        val navDesc = crawls.take(10).joinToString("\n") {
+            "Screen: ${it.screenName}, Elements: ${it.elementsJson.take(100)}"
+        }
+        val prompt = "App: $packageId\nScreens:\n$navDesc\n\nList 3 useful skill names for this app, one per line."
+        return@withContext try {
+            val response = GemmaInferenceEngine.generate(
+                "You are an Android automation expert.", prompt, maxTokens = 100
+            )
+            val skillNames = response.lines().filter { it.isNotBlank() }.take(3)
+            skillNames.forEach { name ->
+                val skillId = "auto_${packageId}_${name.replace(" ", "_").lowercase().take(30)}"
+                val emb = GemmaInferenceEngine.generateEmbedding(name)
+                db.skillDao().upsert(
+                    SkillEntity(
+                        id = skillId,
+                        appId = packageId,
+                        name = name.trim(),
+                        type = "ui_automation",
+                        category = "auto_generated",
+                        version = "1.0",
+                        intentPatternsJson = """["${name.trim()}"]""",
+                        parametersJson = "{}",
+                        stepsJson = "[]",
+                        confirmationRequired = false,
+                        embedding = com.omnix.agent.ai.floatArrayToBytes(emb),
+                        intentHash = sha256(name).take(16),
+                        status = "active"
+                    )
+                )
+            }
+            skillNames.size
+        } catch (e: Exception) { 0 }
+    }
+
+    private fun sha256(input: String): String {
+        val d = java.security.MessageDigest.getInstance("SHA-256")
+        return d.digest(input.toByteArray()).joinToString("") { "%02x".format(it) }
+    }
+
     companion object {
         private val SKILL_GEN_SYSTEM = """
             You are a mobile automation skill generator.

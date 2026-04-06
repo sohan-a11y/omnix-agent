@@ -16,10 +16,6 @@ android {
         versionCode 1
         versionName "1.0.0"
 
-        ndk {
-            abiFilters "arm64-v8a"  // Samsung S25 Ultra only
-        }
-
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
         // Porcupine key - set in local.properties or environment
@@ -94,9 +90,8 @@ android {
 }
 
 dependencies {
-    // LiteRT (Google AI Edge) - Gemma 4 on-device inference
-    implementation "com.google.ai.edge.litert:litert-lm:1.0.0"
-    implementation "com.google.ai.edge.litert:litert:1.4.0"
+    // MediaPipe LLM Inference - Gemma on-device inference (GA, available on Maven)
+    implementation "com.google.mediapipe:tasks-genai:0.10.22"
 
     // Room Database
     implementation "androidx.room:room-runtime:2.6.1"

@@ -39,6 +39,20 @@ object AppPreLauncher {
     }
 
     /**
+     * Pre-warm the most commonly used apps on wake word detection.
+     * Uses a static list of top apps likely to be invoked by the user.
+     */
+    fun prewarmTopApps(context: Context) {
+        val topApps = listOf(
+            "com.whatsapp",
+            "com.google.android.apps.maps",
+            "com.phonepe.app",
+            "in.amazon.mShop.android.shopping"
+        )
+        topApps.forEach { prewarm(context, it) }
+    }
+
+    /**
      * Execute multiple independent skills in parallel.
      * Example: "check HDFC and SBI balance simultaneously"
      */
