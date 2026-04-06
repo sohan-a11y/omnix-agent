@@ -119,26 +119,45 @@ class OnboardingActivity : AppCompatActivity() {
     }
 
     /**
-     * Download Vosk small English model via Android DownloadManager.
-     * The zip is extracted to filesDir/models/vosk/ at first launch.
-     * Model: vosk-model-small-en-us-0.15 (~40 MB, works well for Indian English).
+     * Download Vosk small English model directly to filesDir using a coroutine.
+     * DownloadManager cannot write to internal storage (SecurityException), so we
+     * use URL.openStream() instead — works for any internal path, no permissions needed.
      */
     private fun enqueueWhisperDownload() {
         val destDir = File(filesDir, WhisperEngine.MODEL_DIR).also { it.mkdirs() }
         val destZip = File(destDir, "vosk-model.zip")
-        // Already extracted
-        if (File(destDir, WhisperEngine.MODEL_FILENAME).exists()) return
-        val url = "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip"
-        val dm = getSystemService(android.app.DownloadManager::class.java)
-        val req = android.app.DownloadManager.Request(android.net.Uri.parse(url))
-            .setTitle("OMNIX: Vosk speech model")
-            .setDescription("Downloading offline speech recognition model (~40 MB)")
-            .setDestinationUri(android.net.Uri.fromFile(destZip))
-            .setAllowedOverMetered(false)
-            .setAllowedOverRoaming(false)
-            .setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-        dm.enqueue(req)
-        // Extraction happens in OmnixVoiceService.onCreate() when model zip is present
+        if (File(destDir, WhisperEngine.MODEL_FILENAME).exists() || destZip.exists()) return
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(
+                        this@OnboardingActivity,
+                        "Downloading speech model (~40 MB)…", Toast.LENGTH_LONG
+                    ).show()
+                }
+                val url = java.net.URL(
+                    "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip"
+                )
+                url.openStream().buffered().use { input ->
+                    destZip.outputStream().buffered().use { input.copyTo(it) }
+                }
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(
+                        this@OnboardingActivity,
+                        "Speech model ready. Restart OMNIX to activate voice.", Toast.LENGTH_LONG
+                    ).show()
+                }
+            } catch (e: Exception) {
+                destZip.delete()   // clean up partial file
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(
+                        this@OnboardingActivity,
+                        "Model download failed — check Wi-Fi and try again.", Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
     }
 
     private fun startOmnix() {
