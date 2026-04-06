@@ -25,6 +25,8 @@ import com.omnix.agent.skills.SkillLibrary
 import com.omnix.agent.voice.TTS
 import com.omnix.agent.voice.WhisperEngine
 import java.io.File
+import java.io.FileOutputStream
+import java.util.zip.ZipInputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -227,8 +229,34 @@ class OnboardingActivity : AppCompatActivity() {
                 url.openStream().buffered().use { input ->
                     destZip.outputStream().buffered().use { input.copyTo(it) }
                 }
+
                 withContext(Dispatchers.Main) {
-                    tvVoskStatus.text = "✓ Voice model downloaded — restart to activate"
+                    tvVoskStatus.text = "Extracting voice model…"
+                }
+
+                // Unzip it
+                java.util.zip.ZipInputStream(destZip.inputStream().buffered()).use { zis ->
+                    var entry = zis.nextEntry
+                    while (entry != null) {
+                        val outFile = File(destDir, entry.name)
+                        if (entry.isDirectory) {
+                            outFile.mkdirs()
+                        } else {
+                            outFile.parentFile?.mkdirs()
+                            FileOutputStream(outFile).use { fos ->
+                                zis.copyTo(fos)
+                            }
+                        }
+                        zis.closeEntry()
+                        entry = zis.nextEntry
+                    }
+                }
+                
+                // Cleanup zip
+                destZip.delete()
+
+                withContext(Dispatchers.Main) {
+                    tvVoskStatus.text = "✓ Voice model ready"
                     checkAndProgress()
                 }
             } catch (e: Exception) {
