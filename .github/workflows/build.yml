@@ -2,6 +2,7 @@ name: Build & Release OMNIX APK
 
 on:
   push:
+    branches: [ master, main ]
     tags:
       - 'v*'
   pull_request:
@@ -23,19 +24,28 @@ jobs:
       - name: Setup Gradle cache
         uses: gradle/actions/setup-gradle@v3
         with:
-          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+          cache-read-only: false
 
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      - name: Build Debug APK (PRs)
-        if: github.event_name == 'pull_request'
+      # ── Debug APK (every push to master/main) ─────────────────────────────
+      - name: Build Debug APK
+        if: "!startsWith(github.ref, 'refs/tags/v')"
         run: ./gradlew assembleDebug
 
+      - name: Upload Debug APK
+        if: "!startsWith(github.ref, 'refs/tags/v')"
+        uses: actions/upload-artifact@v4
+        with:
+          name: OMNIX-debug-${{ github.sha }}
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 14
+
+      # ── Signed Release APK (on v* tags only) ──────────────────────────────
       - name: Decode Keystore
         if: startsWith(github.ref, 'refs/tags/v')
-        run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > keystore.jks
+        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > keystore.jks
 
       - name: Build Release APK
         if: startsWith(github.ref, 'refs/tags/v')
@@ -46,37 +56,22 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
-      - name: Sign APK
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: r0adkll/sign-android-release@v1
-        with:
-          releaseDirectory: app/build/outputs/apk/release
-          signingKeyBase64: ${{ secrets.KEYSTORE_BASE64 }}
-          alias: ${{ secrets.KEY_ALIAS }}
-          keyStorePassword: ${{ secrets.STORE_PASSWORD }}
-          keyPassword: ${{ secrets.KEY_PASSWORD }}
-
-      - name: Get version from tag
-        if: startsWith(github.ref, 'refs/tags/v')
-        id: get_version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-
       - name: Upload to GitHub Releases
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          name: OMNIX ${{ steps.get_version.outputs.VERSION }}
-          files: |
-            app/build/outputs/apk/release/*.apk
+          name: OMNIX ${{ github.ref_name }}
+          files: app/build/outputs/apk/release/*.apk
           body: |
-            ## OMNIX ${{ steps.get_version.outputs.VERSION }}
+            ## OMNIX ${{ github.ref_name }}
 
-            Autonomous on-device AI agent for Android 12+ (arm64-v8a)
+            Signed release APK for Android 12+ (arm64-v8a / Samsung Galaxy S25 Ultra).
 
-            ### Installation
-            1. Enable "Install from unknown sources" in Settings
-            2. Download the APK
-            3. Install and grant Accessibility Service permission
-            4. Download Gemma 4 model when prompted
+            ### Install
+            1. Enable **Install unknown apps** in Settings → Security
+            2. Download the APK below
+            3. Open it and tap Install
+            4. Grant **Accessibility Service** permission to OMNIX
+            5. Download the Vosk speech model when prompted (~40 MB, Wi-Fi recommended)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
