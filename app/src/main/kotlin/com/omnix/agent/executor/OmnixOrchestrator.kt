@@ -3,16 +3,21 @@ package com.omnix.agent.executor
 import android.content.Context
 import com.omnix.agent.ai.GemmaInferenceEngine
 import com.omnix.agent.ai.IntentResult
+import com.omnix.agent.ai.floatArrayToBytes
 import com.omnix.agent.core.OmnixAccessibilityService
 import com.omnix.agent.database.*
+import com.omnix.agent.improvements.ContextManager
+import com.omnix.agent.improvements.EventTriggerEngine
+import com.omnix.agent.improvements.OmnixProfiler
+import com.omnix.agent.improvements.ProactiveAssistant
+import com.omnix.agent.skills.CorrectionLearner
 import com.omnix.agent.skills.SkillLibraryManager
 import com.omnix.agent.voice.TTS
 import kotlinx.coroutines.*
-import java.util.UUID
 
 /**
- * Central coordinator for OMNIX.
- * Routes intents -> skills -> executor -> history.
+ * Central coordinator for OMNIX — Module 11 wired.
+ * Routes intents → skills → executor → history.
  */
 object OmnixOrchestrator {
 
@@ -20,7 +25,6 @@ object OmnixOrchestrator {
     private var db: OmnixDatabase? = null
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    // Current app context
     @Volatile private var currentPackage = ""
     @Volatile private var currentScreen = ""
 
@@ -33,44 +37,79 @@ object OmnixOrchestrator {
     fun onScreenChanged(packageName: String, className: String) {
         currentPackage = packageName
         currentScreen = className
-        scope.launch {
-            // Check if any triggers fire on this screen
-            EventTriggerEngine.checkScreenTriggers(packageName, className)
-        }
+        EventTriggerEngine.onScreenChanged(packageName, className)
     }
 
     fun onContentChanged(packageName: String) {
-        scope.launch {
-            EventTriggerEngine.checkContentTriggers(packageName)
-        }
+        EventTriggerEngine.onTextChanged(packageName, "")
     }
 
     fun onScroll(packageName: String) {}
 
     // ── Voice intent handler ──────────────────────────────────────────────────
-    fun handleVoiceIntent(intent: IntentResult, rawQuery: String) {
+    fun handleVoiceIntent(rawQuery: String, ctx: Context? = null) {
         scope.launch {
-            val ctx = context ?: return@launch
+            val context = ctx ?: context ?: return@launch
             val a11y = OmnixAccessibilityService.instance ?: return@launch
 
-            if (intent.confidence < 0.5f) {
+            // Compact context if needed before Gemma call
+            ContextManager.goal = rawQuery
+            ContextManager.addTurn("user: $rawQuery")
+
+            val intent = OmnixProfiler.measure("gemma.intent") {
+                GemmaInferenceEngine.extractIntent(rawQuery)
+            }
+
+            if (intent.confidence < 0.5f && !intent.ambiguous) {
                 TTS.speak("I'm not sure I understand. Could you rephrase?", TTS.QUEUE_FLUSH)
                 return@launch
             }
 
-            val skill = SkillLibraryManager.findSkill(intent)
+            if (intent.ambiguous && !intent.clarification.isNullOrBlank()) {
+                TTS.speak(intent.clarification, TTS.QUEUE_FLUSH)
+                return@launch
+            }
+
+            // Apply correction overrides before skill lookup (Task 14)
+            val overrideSkillId = CorrectionLearner.applyOverrides(intent)
+            val skill = if (overrideSkillId != null) {
+                db?.skillDao()?.getById(overrideSkillId)
+            } else {
+                OmnixProfiler.measure("skill.lookup") {
+                    SkillLibraryManager.findSkill(intent)
+                }
+            }
+
             if (skill == null) {
-                TTS.speak("I don't know how to ${intent.intent} yet. I'll learn it.", TTS.QUEUE_FLUSH)
-                // Trigger discovery for the relevant app
+                TTS.speak("I don't know how to do that yet — learning it now.", TTS.QUEUE_FLUSH)
+                // Trigger discovery for the relevant app (if mentioned)
+                val appPackage = intent.entities["app"]
+                if (!appPackage.isNullOrBlank()) {
+                    val svcIntent = android.content.Intent(context,
+                        com.omnix.agent.discovery.OmnixDiscoveryService::class.java).apply {
+                        action = "com.omnix.agent.ACTION_DISCOVER_NEW"
+                        putExtra("package_name", appPackage)
+                    }
+                    context.startService(svcIntent)
+                }
                 return@launch
             }
 
             // Resolve parameters
-            val params = resolveParameters(skill, intent)
+            val params = resolveParameters(context, skill, intent)
+
+            // Anomaly check before financial actions (Task 35)
+            val anomalyScore = ProactiveAssistant.anomalyScore(skill.id, params)
+            if (anomalyScore >= 0.7f && skill.confirmationRequired) {
+                TTS.speak("This action looks unusual. Please confirm again.", TTS.QUEUE_FLUSH)
+                return@launch
+            }
 
             // Execute
-            val executor = SkillExecutor(a11y, ctx)
-            val result = executor.executeSkill(skill, params)
+            val executor = SkillExecutor(a11y, context)
+            val result = OmnixProfiler.measure("skill.execute.${skill.id}") {
+                executor.executeSkill(skill, params)
+            }
 
             when (result) {
                 is SkillResult.Success -> {
@@ -78,12 +117,15 @@ object OmnixOrchestrator {
                     if (outputs.isNotEmpty()) {
                         val summary = outputs.entries.take(3).joinToString(", ") { "${it.key}: ${it.value}" }
                         TTS.speak("Done. $summary", TTS.QUEUE_FLUSH)
+                    } else {
+                        TTS.speak("Done.", TTS.QUEUE_FLUSH)
                     }
-                    // Store to memory
                     storeMemory(rawQuery, skill, result)
+                    recordExecution(skill, params, result, true)
                 }
                 is SkillResult.Failure -> {
                     TTS.speak("Sorry, that failed. ${result.reason}", TTS.QUEUE_FLUSH)
+                    recordExecution(skill, params, result, false)
                 }
                 is SkillResult.Cancelled -> {
                     TTS.speak("Cancelled.", TTS.QUEUE_FLUSH)
@@ -92,26 +134,69 @@ object OmnixOrchestrator {
         }
     }
 
-    private fun resolveParameters(skill: SkillEntity, intent: IntentResult): Map<String, String> {
-        return intent.entities.filterValues { it != null }.mapValues { it.value!! }
+    /** Execute a skill directly by ID — used by EventTriggerEngine and OmnixMesh. */
+    suspend fun executeSkillById(skillId: String, params: Map<String, String>): Boolean {
+        val ctx = context ?: return false
+        val a11y = OmnixAccessibilityService.instance ?: return false
+        val db = db ?: return false
+        val skill = db.skillDao().getById(skillId) ?: return false
+        return try {
+            val executor = SkillExecutor(a11y, ctx)
+            val result = executor.executeSkill(skill, params)
+            result is SkillResult.Success
+        } catch (_: Exception) { false }
+    }
+
+    private suspend fun resolveParameters(
+        context: Context,
+        skill: SkillEntity,
+        intent: IntentResult
+    ): Map<String, String> {
+        val base = intent.entities.filterValues { it != null }.mapValues { it.value!! }.toMutableMap()
+
+        // Resolve contact name → phone number if needed
+        val contactName = base["contact"]
+        if (!contactName.isNullOrBlank() && !contactName.all { it.isDigit() }) {
+            val contact = com.omnix.agent.skills.ContactsReader.resolve(context, contactName)
+            contact?.phone?.let { base["phone"] = it }
+        }
+        return base
     }
 
     private suspend fun storeMemory(query: String, skill: SkillEntity, result: SkillResult) {
         val db = db ?: return
-        val memory = MemoryEntity(
-            content = "User asked: $query. Executed: ${skill.name}. Result: ${result.javaClass.simpleName}",
-            memoryType = "episodic",
-            importanceScore = 0.6f,
-            embedding = ByteArray(0)
+        val emb = GemmaInferenceEngine.generateEmbedding(query)
+        db.memoryDao().upsert(
+            MemoryEntity(
+                content = "User: $query → ${skill.name} → ${result.javaClass.simpleName}",
+                memoryType = "episodic",
+                importanceScore = if (skill.category == "banking") 0.9f else 0.6f,
+                embedding = floatArrayToBytes(emb)
+            )
         )
-        db.memoryDao().upsert(memory)
     }
-}
 
-// ── Stub for EventTriggerEngine ─────────────────────────────────────────────
-object EventTriggerEngine {
-    fun start(context: Context) {}
-    fun stop() {}
-    suspend fun checkScreenTriggers(packageName: String, className: String) {}
-    suspend fun checkContentTriggers(packageName: String) {}
+    private suspend fun recordExecution(
+        skill: SkillEntity,
+        params: Map<String, String>,
+        result: SkillResult,
+        success: Boolean
+    ) {
+        val db = db ?: return
+        val durationMs = OmnixProfiler.stats("skill.execute.${skill.id}").p50
+        db.executionHistoryDao().insert(
+            ExecutionHistoryEntity(
+                id = java.util.UUID.randomUUID().toString(),
+                skillId = skill.id,
+                skillName = skill.name,
+                inputParamsJson = params.toString(),
+                outputJson = "{}",
+                outcome = if (success) "success" else "failure",
+                executedAt = System.currentTimeMillis(),
+                durationMs = durationMs
+            )
+        )
+        if (success) db.skillDao().recordSuccess(skill.id, durationMs)
+        else db.skillDao().recordFailure(skill.id)
+    }
 }

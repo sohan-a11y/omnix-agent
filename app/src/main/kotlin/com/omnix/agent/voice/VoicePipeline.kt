@@ -7,7 +7,6 @@ import android.media.MediaRecorder
 import ai.picovoice.porcupine.Porcupine
 import ai.picovoice.porcupine.PorcupineActivationException
 import com.omnix.agent.BuildConfig
-import com.omnix.agent.ai.GemmaInferenceEngine
 import com.omnix.agent.executor.AppPreLauncher
 import com.omnix.agent.executor.OmnixOrchestrator
 import java.io.File
@@ -96,14 +95,7 @@ object VoicePipeline {
 
         TTS.speak("Got it. Processing...", TTS.QUEUE_ADD)
 
-        // Extract intent and execute
-        val intent = GemmaInferenceEngine.extractIntent(command)
-        if (intent.ambiguous && intent.clarification != null) {
-            TTS.speak(intent.clarification, TTS.QUEUE_FLUSH)
-            return
-        }
-
-        OmnixOrchestrator.handleVoiceIntent(intent, command)
+        OmnixOrchestrator.handleVoiceIntent(command, ctx)
     }
 
     fun isRunning() = running

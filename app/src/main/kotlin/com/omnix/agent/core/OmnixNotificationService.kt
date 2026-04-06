@@ -11,11 +11,13 @@ class OmnixNotificationService : NotificationListenerService() {
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         val packageName = sbn.packageName
-        val title = sbn.notification.extras.getString("android.title") ?: ""
-        val text = sbn.notification.extras.getString("android.text") ?: ""
+        val extras = sbn.notification.extras
+        val title = extras.getString("android.title") ?: ""
+        val text = extras.getCharSequence("android.text")?.toString() ?: ""
 
         scope.launch {
-            EventTriggerEngine.checkContentTriggers(packageName)
+            // Route to EventTriggerEngine trigger 4: NotificationReceived
+            EventTriggerEngine.onNotificationReceived(packageName, title, text)
         }
     }
 

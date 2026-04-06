@@ -16,7 +16,9 @@ import com.omnix.agent.ai.GemmaInferenceEngine
 import com.omnix.agent.ai.ModelDownloadManager
 import com.omnix.agent.database.OmnixDatabase
 import com.omnix.agent.executor.OmnixOrchestrator
-import com.omnix.agent.skills.BankingSkills
+import com.omnix.agent.skills.CorrectionLearner
+import com.omnix.agent.improvements.ProactiveAssistant
+import com.omnix.agent.skills.SkillLibrary
 import com.omnix.agent.voice.TTS
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -36,6 +38,7 @@ class OnboardingActivity : AppCompatActivity() {
 
         TTS.initialize(this)
         OmnixOrchestrator.initialize(this)
+        CorrectionLearner.init(this)
 
         setupUI()
         checkAndProgress()
@@ -115,11 +118,10 @@ class OnboardingActivity : AppCompatActivity() {
     private fun seedDefaultSkills() {
         lifecycleScope.launch(Dispatchers.IO) {
             val db = OmnixDatabase.getInstance(applicationContext)
-            // Seed banking skills
-            db.skillDao().upsert(BankingSkills.getHDFCBalanceSkill())
-            db.skillDao().upsert(BankingSkills.getSBIBalanceSkill())
-            db.skillDao().upsert(BankingSkills.getGPayTransferSkill())
-            db.skillDao().upsert(BankingSkills.getPhonePeTransferSkill())
+            // Seed all 15+ pre-built skills (idempotent)
+            SkillLibrary.seedAll(applicationContext, db)
+            // Start proactive monitoring
+            ProactiveAssistant.start(applicationContext, db)
         }
     }
 

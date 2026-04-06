@@ -1,0 +1,15 @@
+# Copy this file to local.properties and fill in your values.
+# local.properties is git-ignored and must NEVER be committed.
+
+# Android SDK location (required)
+sdk.dir=/path/to/your/Android/Sdk
+
+# Porcupine wake-word access key (required for "Hey OMNIX" detection)
+# Get your free key at: https://console.picovoice.ai/
+PORCUPINE_KEY=YOUR_PORCUPINE_ACCESS_KEY_HERE
+
+# Release signing (only needed for release builds — CI uses environment secrets)
+# KEYSTORE_PATH=/absolute/path/to/omnix-release.jks
+# STORE_PASSWORD=your_store_password
+# KEY_ALIAS=omnix-release
+# KEY_PASSWORD=your_key_password

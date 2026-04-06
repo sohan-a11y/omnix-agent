@@ -28,9 +28,10 @@ class OmnixAccessibilityService : AccessibilityService() {
     // ── Lifecycle ──────────────────────────────────────────────────────────────
     override fun onServiceConnected() {
         instance = this
+        SamsungCompatibilityLayer.apply(applicationContext)
         VoicePipeline.start(applicationContext)
         SkillLibraryManager.initialize(applicationContext)
-        EventTriggerEngine.start(applicationContext)
+        com.omnix.agent.improvements.EventTriggerEngine.start(applicationContext)
     }
 
     override fun onInterrupt() {
@@ -60,6 +61,11 @@ class OmnixAccessibilityService : AccessibilityService() {
             }
             AccessibilityEvent.TYPE_VIEW_SCROLLED -> {
                 OmnixOrchestrator.onScroll(event.packageName?.toString() ?: "")
+            }
+            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED -> {
+                val pkg = event.packageName?.toString() ?: ""
+                val text = event.text.joinToString(" ")
+                com.omnix.agent.improvements.EventTriggerEngine.onTextChanged(pkg, text)
             }
         }
     }

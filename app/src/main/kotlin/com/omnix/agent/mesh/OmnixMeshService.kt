@@ -27,10 +27,12 @@ class OmnixMeshService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        OmnixMesh.advertise(this)
         return START_STICKY
     }
 
     override fun onDestroy() {
+        OmnixMesh.stop()
         scope.cancel()
         super.onDestroy()
     }

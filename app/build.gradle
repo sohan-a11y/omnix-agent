@@ -121,6 +121,9 @@ dependencies {
     // WorkManager
     implementation "androidx.work:work-runtime-ktx:2.9.0"
 
+    // Google Play Services Location (FusedLocationProvider for EventTriggerEngine)
+    implementation "com.google.android.gms:play-services-location:21.3.0"
+
     // Encrypted SharedPreferences for API key storage
     implementation "androidx.security:security-crypto:1.1.0-alpha06"
 
