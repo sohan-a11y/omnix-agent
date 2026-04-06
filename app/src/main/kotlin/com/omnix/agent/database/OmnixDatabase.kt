@@ -11,9 +11,12 @@ import androidx.room.*
         SkillEntity::class,
         TaskEntity::class,
         MemoryEntity::class,
-        ActionHistoryEntity::class
+        ActionHistoryEntity::class,
+        ExecutionHistoryEntity::class,
+        APKKnowledgeEntity::class,
+        ScreenCrawlEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class OmnixDatabase : RoomDatabase() {
@@ -24,6 +27,9 @@ abstract class OmnixDatabase : RoomDatabase() {
     abstract fun taskDao(): TaskDao
     abstract fun memoryDao(): MemoryDao
     abstract fun historyDao(): HistoryDao
+    abstract fun executionHistoryDao(): ExecutionHistoryDao
+    abstract fun apkKnowledgeDao(): APKKnowledgeDao
+    abstract fun screenCrawlDao(): ScreenCrawlDao
 
     companion object {
         @Volatile private var INSTANCE: OmnixDatabase? = null

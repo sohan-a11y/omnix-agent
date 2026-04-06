@@ -82,6 +82,7 @@ data class SkillEntity(
     val parametersJson: String,       // JSON object of parameter definitions
     val stepsJson: String,            // JSON array of execution steps
     val confirmationRequired: Boolean,
+    @ColumnInfo(typeAffinity = ColumnInfo.BLOB)
     val embedding: ByteArray,         // Gemma embedding for semantic search
     val intentHash: String,
     val successCount: Int = 0,
@@ -118,6 +119,7 @@ data class MemoryEntity(
     val content: String,
     val memoryType: String,           // "episodic"|"semantic"|"procedural"|"preference"
     val importanceScore: Float = 0.5f,
+    @ColumnInfo(typeAffinity = ColumnInfo.BLOB)
     val embedding: ByteArray,
     val accessCount: Int = 0,
     val createdAt: Long = System.currentTimeMillis(),
@@ -142,4 +144,48 @@ data class ActionHistoryEntity(
     val retainDays: Int,
     val appId: String = "",
     val taskId: String = ""
+)
+
+// ─── Entity 8: Execution History ─────────────────────────────────────────────
+@Entity(
+    tableName = "execution_history",
+    indices = [Index("skillId"), Index("executedAt")]
+)
+data class ExecutionHistoryEntity(
+    @PrimaryKey val id: String,
+    val skillId: String,
+    val skillName: String,
+    val inputParamsJson: String,
+    val outputJson: String,
+    val outcome: String,            // "success" | "failure" | "cancelled"
+    val executedAt: Long,
+    val durationMs: Long,
+    val healApplied: Boolean = false,
+    val healStrategy: String = ""
+)
+
+// ─── Entity 9: APK Knowledge ──────────────────────────────────────────────────
+@Entity(tableName = "apk_knowledge")
+data class APKKnowledgeEntity(
+    @PrimaryKey val packageId: String,
+    val deepLinksJson: String,
+    val screensJson: String,
+    val permissionsJson: String,
+    val analysedAt: Long,
+    val apkHash: String
+)
+
+// ─── Entity 10: Screen Crawl ──────────────────────────────────────────────────
+@Entity(
+    tableName = "screen_crawls",
+    indices = [Index("packageId")]
+)
+data class ScreenCrawlEntity(
+    @PrimaryKey val id: String,
+    val packageId: String,
+    val screenName: String,
+    val elementsJson: String,
+    val navPathJson: String,
+    val crawledAt: Long,
+    val contentHash: String
 )

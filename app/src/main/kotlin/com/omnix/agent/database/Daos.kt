@@ -162,3 +162,42 @@ interface HistoryDao {
     @Query("DELETE FROM action_history WHERE timestamp < :cutoff AND retainDays > 0 AND (timestamp/86400000) < :cutoff/86400000 - retainDays")
     suspend fun pruneExpired(cutoff: Long = System.currentTimeMillis())
 }
+
+@Dao
+interface ExecutionHistoryDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(entity: ExecutionHistoryEntity)
+
+    @Query("SELECT * FROM execution_history WHERE skillId = :skillId ORDER BY executedAt DESC LIMIT 50")
+    suspend fun getForSkill(skillId: String): List<ExecutionHistoryEntity>
+
+    @Query("SELECT * FROM execution_history ORDER BY executedAt DESC LIMIT :limit")
+    suspend fun getRecent(limit: Int = 100): List<ExecutionHistoryEntity>
+
+    @Query("DELETE FROM execution_history WHERE executedAt < :before")
+    suspend fun deleteOlderThan(before: Long)
+}
+
+@Dao
+interface APKKnowledgeDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(entity: APKKnowledgeEntity)
+
+    @Query("SELECT * FROM apk_knowledge WHERE packageId = :packageId")
+    suspend fun getByPackage(packageId: String): APKKnowledgeEntity?
+
+    @Query("SELECT * FROM apk_knowledge")
+    suspend fun getAll(): List<APKKnowledgeEntity>
+}
+
+@Dao
+interface ScreenCrawlDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(entity: ScreenCrawlEntity)
+
+    @Query("SELECT * FROM screen_crawls WHERE packageId = :packageId ORDER BY crawledAt DESC")
+    suspend fun getForApp(packageId: String): List<ScreenCrawlEntity>
+
+    @Query("SELECT * FROM screen_crawls WHERE packageId = :packageId AND screenName = :screenName ORDER BY crawledAt DESC LIMIT 1")
+    suspend fun getLatestForScreen(packageId: String, screenName: String): ScreenCrawlEntity?
+}
