@@ -20,22 +20,20 @@ object ASREngine {
      * Returns null on timeout or error.
      */
     suspend fun captureCommand(
-        context: Context? = null,
+        context: Context,
         timeoutMs: Long = 5000
     ): String? = withTimeoutOrNull(timeoutMs) {
         suspendCancellableCoroutine { cont ->
-            val ctx = context ?: return@suspendCancellableCoroutine
-
-            if (!SpeechRecognizer.isRecognitionAvailable(ctx)) {
+            if (!SpeechRecognizer.isRecognitionAvailable(context)) {
                 cont.resume(null)
                 return@suspendCancellableCoroutine
             }
 
-            val recognizer = SpeechRecognizer.createSpeechRecognizer(ctx)
+            val recognizer = SpeechRecognizer.createSpeechRecognizer(context)
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                 putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-                putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, ctx.packageName)
+                putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
             }
 
             recognizer.setRecognitionListener(object : RecognitionListener {

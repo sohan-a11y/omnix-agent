@@ -8,6 +8,7 @@ import java.util.Locale
 import kotlin.coroutines.resume
 
 object TTS {
+    val DEFAULT_LOCALE = Locale("en", "IN")
     const val QUEUE_FLUSH = TextToSpeech.QUEUE_FLUSH
     const val QUEUE_ADD = TextToSpeech.QUEUE_ADD
 
@@ -17,7 +18,7 @@ object TTS {
     fun initialize(context: Context, onReady: (() -> Unit)? = null) {
         tts = TextToSpeech(context) { status ->
             if (status == TextToSpeech.SUCCESS) {
-                tts?.language = Locale.US
+                tts?.language = DEFAULT_LOCALE
                 tts?.setSpeechRate(1.1f)
                 tts?.setPitch(1.0f)
                 initialized = true

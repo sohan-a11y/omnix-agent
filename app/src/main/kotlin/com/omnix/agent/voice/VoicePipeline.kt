@@ -8,10 +8,14 @@ import ai.picovoice.porcupine.Porcupine
 import ai.picovoice.porcupine.PorcupineActivationException
 import com.omnix.agent.BuildConfig
 import com.omnix.agent.ai.GemmaInferenceEngine
+import com.omnix.agent.executor.AppPreLauncher
 import com.omnix.agent.executor.OmnixOrchestrator
+import java.io.File
 import kotlinx.coroutines.*
 
 object VoicePipeline {
+
+    const val PPN_MODEL_PATH = "models/omnix_android_arm64.ppn"
 
     private var porcupine: Porcupine? = null
     private var recorder: AudioRecord? = null
@@ -25,7 +29,7 @@ object VoicePipeline {
         try {
             porcupine = Porcupine.Builder()
                 .setAccessKey(BuildConfig.PORCUPINE_KEY)
-                .setKeywordPath("omnix_android_arm64.ppn") // Snapdragon-optimized model
+                .setKeywordPath(File(ctx.filesDir, PPN_MODEL_PATH).absolutePath)
                 .setSensitivity(0.7f)
                 .build(ctx)
 
@@ -82,10 +86,12 @@ object VoicePipeline {
     }
 
     private suspend fun onWakeWordDetected(ctx: Context) {
+        // Pre-warm likely apps immediately on wake word
+        AppPreLauncher.warmUp(ctx)
         TTS.speak("Yes?", TTS.QUEUE_FLUSH)
 
         // Capture user command via ASR
-        val command = ASREngine.captureCommand(timeoutMs = 5000) ?: return
+        val command = ASREngine.captureCommand(context = ctx, timeoutMs = 5000) ?: return
         if (command.isBlank()) return
 
         TTS.speak("Got it. Processing...", TTS.QUEUE_ADD)
