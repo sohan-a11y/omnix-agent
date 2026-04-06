@@ -13,7 +13,7 @@
 *.ap_
 
 # Gradle
-gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.jar
 .gradle/
 
 # Keystore - NEVER commit
