@@ -14,7 +14,6 @@ import androidx.lifecycle.lifecycleScope
 import com.omnix.agent.R
 import com.omnix.agent.ai.GemmaInferenceEngine
 import com.omnix.agent.ai.ModelDownloadManager
-import com.omnix.agent.ai.ModelDownloadWorker
 import com.omnix.agent.database.OmnixDatabase
 import com.omnix.agent.executor.OmnixOrchestrator
 import com.omnix.agent.skills.BankingSkills
@@ -99,8 +98,7 @@ class OnboardingActivity : AppCompatActivity() {
             .setMessage("OMNIX requires the Gemma 4 E2B model (~2GB). Download now?")
             .setPositiveButton("Download") { _, _ ->
                 // Show model URL input or use default
-                val modelUrl = "https://huggingface.co/google/gemma-4-e2b/resolve/main/gemma-4-e2b.litertlm"
-                ModelDownloadWorker.enqueue(this, modelUrl)
+                ModelDownloadManager.startDownload(this)
                 Toast.makeText(this, "Download started in background", Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("Cancel", null)
