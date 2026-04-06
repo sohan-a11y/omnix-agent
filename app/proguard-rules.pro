@@ -21,14 +21,27 @@
     kotlinx.serialization.KSerializer serializer(...);
 }
 
-# Keep LiteRT / TensorFlow Lite
--keep class com.google.ai.edge.litert.** { *; }
--keep class org.tensorflow.** { *; }
--dontwarn org.tensorflow.**
+# Keep MediaPipe (tasks-genai / Gemma)
+-keep class com.google.mediapipe.** { *; }
+-dontwarn com.google.mediapipe.**
 
-# Keep Porcupine
--keep class ai.picovoice.** { *; }
--dontwarn ai.picovoice.**
+# Protobuf annotations referenced by MediaPipe but not in Android runtime
+-dontwarn com.google.protobuf.Internal$ProtoMethodMayReturnNull
+-dontwarn com.google.protobuf.Internal$ProtoNonnullApi
+-dontwarn com.google.protobuf.ProtoField
+-dontwarn com.google.protobuf.ProtoPresenceBits
+-dontwarn com.google.protobuf.ProtoPresenceCheckedField
+
+# AutoValue annotation processor — only needed at compile time, not runtime
+-dontwarn com.google.auto.value.**
+-dontwarn autovalue.shaded.com.squareup.javapoet.**
+
+# javax.lang.model — Java compiler API, not available on Android
+-dontwarn javax.lang.model.**
+
+# Keep Vosk (free offline ASR)
+-keep class org.vosk.** { *; }
+-dontwarn org.vosk.**
 
 # Keep AccessibilityService
 -keep class com.omnix.agent.core.OmnixAccessibilityService { *; }
