@@ -50,23 +50,55 @@ object OmnixOrchestrator {
     fun handleVoiceIntent(rawQuery: String, ctx: Context? = null) {
         scope.launch {
             val context = ctx ?: context ?: return@launch
-            val a11y = OmnixAccessibilityService.instance ?: return@launch
+            val a11y by lazy { OmnixAccessibilityService.instance }
 
-            // Compact context if needed before Gemma call
             ContextManager.goal = rawQuery
             ContextManager.addTurn("user: $rawQuery")
+
+            if (!GemmaInferenceEngine.isReady()) {
+                TTS.speak("AI brain not loaded yet. Download the Gemma model from the OMNIX setup screen.", TTS.QUEUE_FLUSH)
+                return@launch
+            }
 
             val intent = OmnixProfiler.measure("gemma.intent") {
                 GemmaInferenceEngine.extractIntent(rawQuery)
             }
 
-            if (intent.confidence < 0.5f && !intent.ambiguous) {
-                TTS.speak("I'm not sure I understand. Could you rephrase?", TTS.QUEUE_FLUSH)
+            // If intent extraction failed entirely or is a parse error, fall back to conversational reply
+            if (intent == null || intent.intent == "parse_error") {
+                val reply = GemmaInferenceEngine.converse(rawQuery)
+                TTS.speak(reply, TTS.QUEUE_FLUSH)
+                return@launch
+            }
+
+            // Low confidence or truly unknown → conversational fallback via Gemma
+            if (intent.intent == "unknown" || (intent.confidence < 0.4f && !intent.ambiguous)) {
+                val reply = GemmaInferenceEngine.converse(rawQuery)
+                TTS.speak(reply, TTS.QUEUE_FLUSH)
                 return@launch
             }
 
             if (intent.ambiguous && !intent.clarification.isNullOrBlank()) {
-                TTS.speak(intent.clarification, TTS.QUEUE_FLUSH)
+                TTS.speak(intent.clarification!!, TTS.QUEUE_FLUSH)
+                return@launch
+            }
+
+            // ── Direct launch_app — open the app, no skill needed ────────────
+            if (intent.intent == "launch_app") {
+                val pkg  = intent.entities["app"]
+                val name = intent.entities["app_name"] ?: pkg ?: "that app"
+                if (pkg != null) {
+                    val li = context.packageManager.getLaunchIntentForPackage(pkg)
+                    if (li != null) {
+                        li.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(li)
+                        TTS.speak("Opening $name.", TTS.QUEUE_FLUSH)
+                    } else {
+                        TTS.speak("$name doesn't seem to be installed.", TTS.QUEUE_FLUSH)
+                    }
+                } else {
+                    TTS.speak("Which app would you like me to open?", TTS.QUEUE_FLUSH)
+                }
                 return@launch
             }
 
@@ -81,17 +113,9 @@ object OmnixOrchestrator {
             }
 
             if (skill == null) {
-                TTS.speak("I don't know how to do that yet — learning it now.", TTS.QUEUE_FLUSH)
-                // Trigger discovery for the relevant app (if mentioned)
-                val appPackage = intent.entities["app"]
-                if (!appPackage.isNullOrBlank()) {
-                    val svcIntent = android.content.Intent(context,
-                        com.omnix.agent.discovery.OmnixDiscoveryService::class.java).apply {
-                        action = "com.omnix.agent.ACTION_DISCOVER_NEW"
-                        putExtra("package_name", appPackage)
-                    }
-                    context.startService(svcIntent)
-                }
+                // Fall back to Gemma conversational response instead of dead-end message
+                val reply = GemmaInferenceEngine.converse(rawQuery)
+                TTS.speak(reply, TTS.QUEUE_FLUSH)
                 return@launch
             }
 
@@ -105,8 +129,13 @@ object OmnixOrchestrator {
                 return@launch
             }
 
-            // Execute
-            val executor = SkillExecutor(a11y, context)
+            // Execute (UI automation skills need accessibility service)
+            val a11yService = a11y
+            if (a11yService == null) {
+                TTS.speak("Please enable OMNIX accessibility service in Settings first.", TTS.QUEUE_FLUSH)
+                return@launch
+            }
+            val executor = SkillExecutor(a11yService, context)
             val result = OmnixProfiler.measure("skill.execute.${skill.id}") {
                 executor.executeSkill(skill, params)
             }
@@ -129,6 +158,92 @@ object OmnixOrchestrator {
                 }
                 is SkillResult.Cancelled -> {
                     TTS.speak("Cancelled.", TTS.QUEUE_FLUSH)
+                }
+            }
+        }
+    }
+
+    // ── Chat (text in, text out) ───────────────────────────────────────────────
+
+    // Command verbs that suggest an action request rather than a question
+    private val commandVerbs = setOf(
+        "open", "launch", "start", "call", "phone", "dial",
+        "send", "message", "text", "whatsapp",
+        "play", "navigate", "go to", "take me to",
+        "set alarm", "set reminder", "remind me",
+        "search", "find", "look up",
+        "transfer", "pay", "send money",
+        "take photo", "take picture",
+        "turn on", "turn off", "enable", "disable"
+    )
+
+    /**
+     * Handle a typed/spoken message from ChatActivity.
+     *
+     * Strategy:
+     * 1. If looks like a command (starts with action verb) → extractIntent → execute → text result
+     * 2. Everything else → converse() directly (single Gemma inference, fast)
+     *
+     * Only ONE Gemma inference per message — no double-run.
+     */
+    suspend fun handleChatMessage(text: String): String {
+        val ctx = context ?: return "OMNIX is not initialized yet."
+
+        if (!GemmaInferenceEngine.isReady()) {
+            return "The Gemma AI brain isn't loaded yet. Please download the model from the setup screen."
+        }
+
+        val lower = text.lowercase().trim()
+        val looksLikeCommand = commandVerbs.any { lower.startsWith(it) }
+
+        if (!looksLikeCommand) {
+            // Pure conversation — single Gemma call
+            return GemmaInferenceEngine.converse(text)
+        }
+
+        // Command path — extract intent then execute
+        val intent = GemmaInferenceEngine.extractIntent(text)
+        if (intent == null || intent.intent == "parse_error" || intent.intent == "unknown" || intent.confidence < 0.45f) {
+            return GemmaInferenceEngine.converse(text)
+        }
+        if (intent.ambiguous && !intent.clarification.isNullOrBlank()) {
+            return intent.clarification!!
+        }
+
+        return when (intent.intent) {
+            "launch_app" -> {
+                val pkg  = intent.entities["app"]
+                val name = intent.entities["app_name"] ?: pkg ?: "that app"
+                if (pkg != null) {
+                    val li = ctx.packageManager.getLaunchIntentForPackage(pkg)
+                    if (li != null) {
+                        li.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                        ctx.startActivity(li)
+                        "Opening $name for you!"
+                    } else {
+                        "$name doesn't seem to be installed."
+                    }
+                } else {
+                    "Which app would you like me to open?"
+                }
+            }
+            else -> {
+                val skill = SkillLibraryManager.findSkill(intent)
+                if (skill == null) {
+                    GemmaInferenceEngine.converse(text)
+                } else {
+                    val a11y = OmnixAccessibilityService.instance
+                    if (a11y == null) {
+                        "I need Accessibility permission enabled to do that. Go to Settings → Accessibility → OMNIX."
+                    } else {
+                        val params = resolveParameters(ctx, skill, intent)
+                        val executor = SkillExecutor(a11y, ctx)
+                        when (val result = executor.executeSkill(skill, params)) {
+                            is SkillResult.Success -> "Done! ${skill.name} completed."
+                            is SkillResult.Failure -> "That didn't work: ${result.reason}"
+                            is SkillResult.Cancelled -> "Cancelled."
+                        }
+                    }
                 }
             }
         }

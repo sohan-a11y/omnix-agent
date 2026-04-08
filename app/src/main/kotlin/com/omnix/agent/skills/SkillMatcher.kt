@@ -81,8 +81,7 @@ object SkillMatcher {
         }
         val raw = GemmaInferenceEngine.generate(
             system = "You are a skill router. Respond with ONLY a single digit index.",
-            user = prompt,
-            maxTokens = 5
+            user = prompt
         ).trim()
         val idx = raw.filter { it.isDigit() }.firstOrNull()?.digitToIntOrNull() ?: return null
         return candidates.getOrNull(idx)

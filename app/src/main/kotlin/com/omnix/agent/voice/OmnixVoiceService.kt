@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.omnix.agent.R
+import com.omnix.agent.ai.GemmaInferenceEngine
 import com.omnix.agent.ui.OnboardingActivity
 import java.io.File
 import java.util.zip.ZipInputStream
@@ -21,6 +22,8 @@ class OmnixVoiceService : Service() {
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification())
         extractVoskModelIfNeeded()
+        // Initialize Gemma brain asynchronously — runs on IO thread, non-blocking
+        GemmaInferenceEngine.initialize(applicationContext)
         VoicePipeline.start(applicationContext)
     }
 
@@ -77,12 +80,19 @@ class OmnixVoiceService : Service() {
             Intent(this, OnboardingActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE
         )
+        val chatIntent = PendingIntent.getActivity(
+            this, 1,
+            Intent(this, com.omnix.agent.ui.ChatActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            PendingIntent.FLAG_IMMUTABLE
+        )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("OMNIX Listening")
-            .setContentText("Say \"Hey OMNIX\" to start")
+            .setContentText("Say \"Hi AI\" or tap Chat to type")
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentIntent(openIntent)
+            .addAction(android.R.drawable.ic_menu_send, "Chat", chatIntent)
             .setOngoing(true)
             .build()
     }

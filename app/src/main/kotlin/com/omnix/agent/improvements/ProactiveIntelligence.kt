@@ -36,8 +36,7 @@ class ProactiveIntelligence(context: Context) {
             val analysis = GemmaInferenceEngine.generate(
                 system = """Analyze this task history for anomalies or optimization opportunities.
                     Respond with JSON: {"anomalies":[],"suggestions":[],"priority":"low|medium|high"}""",
-                user = recentActions.joinToString("\n"),
-                maxTokens = 300
+                user = recentActions.joinToString("\n")
             )
             // Process analysis results
         }

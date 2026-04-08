@@ -189,3 +189,27 @@ data class ScreenCrawlEntity(
     val crawledAt: Long,
     val contentHash: String
 )
+
+// ─── Entity 11: Chat Session ──────────────────────────────────────────────────
+@Entity(tableName = "chat_sessions")
+data class ChatSessionEntity(
+    @PrimaryKey val id: String,
+    val title: String,              // auto-derived from first user message
+    val startedAt: Long = System.currentTimeMillis(),
+    val endedAt: Long = 0L,
+    val messageCount: Int = 0,
+    val summary: String = ""        // filled when session ends
+)
+
+// ─── Entity 12: Chat Message ──────────────────────────────────────────────────
+@Entity(
+    tableName = "chat_messages",
+    indices = [Index("sessionId")]
+)
+data class ChatMessageEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val sessionId: String,
+    val isUser: Boolean,            // true = user, false = AI
+    val text: String,
+    val timestamp: Long = System.currentTimeMillis()
+)

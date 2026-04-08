@@ -63,8 +63,8 @@ object SkillLibraryManager {
 
         if (ranked.isEmpty()) return candidates.firstOrNull()
 
-        // Stage 4: Gemma re-rank top 3
-        if (ranked.size > 1) {
+        // Stage 4: Gemma re-rank top 3 (only if Gemma is ready)
+        if (ranked.size > 1 && GemmaInferenceEngine.isReady()) {
             return gemmaRerank(intent, ranked.take(3))
         }
 
@@ -77,8 +77,7 @@ object SkillLibraryManager {
 
         val result = GemmaInferenceEngine.generate(
             system = "Select the best skill for the user intent. Respond with ONLY the number (1, 2, or 3).",
-            user = "Intent: ${intent.intent}\nEntities: ${intent.entities}\n\nCandidates:\n$candidateList",
-            maxTokens = 10
+            user = "Intent: ${intent.intent}\nEntities: ${intent.entities}\n\nCandidates:\n$candidateList"
         )
 
         val idx = result.trim().firstOrNull()?.digitToIntOrNull()?.minus(1) ?: 0

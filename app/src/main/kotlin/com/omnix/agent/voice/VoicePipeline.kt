@@ -4,6 +4,7 @@ import android.content.Context
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.util.Log
 import com.omnix.agent.executor.AppPreLauncher
 import com.omnix.agent.executor.OmnixOrchestrator
 import kotlinx.coroutines.*
@@ -31,14 +32,16 @@ object VoicePipeline {
         if (running) return
         running = true
         scope.launch {
-            // Load both models; if either fails, stay dormant
+            Log.i("VoicePipeline", "Starting — loading Vosk models…")
             val wakeReady    = SherpaWakeWord.initialize(ctx)
             val whisperReady = WhisperEngine.initialize(ctx)
+            Log.i("VoicePipeline", "wakeReady=$wakeReady whisperReady=$whisperReady")
             if (wakeReady && whisperReady) {
+                Log.i("VoicePipeline", "Models loaded — listening for 'Hi AI'")
+                TTS.speak("I'm listening. Say Hi AI.", TTS.QUEUE_ADD)
                 audioLoop(ctx)
             } else {
-                // Models not downloaded yet — reset state so it can be restarted
-                // by OnboardingActivity after download completes
+                Log.w("VoicePipeline", "Models not ready — voice disabled")
                 running = false
             }
         }
@@ -85,11 +88,13 @@ object VoicePipeline {
     }
 
     private suspend fun onWakeWordDetected(ctx: Context) {
+        Log.i("VoicePipeline", "Wake word detected — capturing command")
         AppPreLauncher.prewarmTopApps(ctx)
         TTS.speak("Yes?", TTS.QUEUE_FLUSH)
 
-        val command = ASREngine.captureCommand(context = ctx, timeoutMs = 7000) ?: return
-        if (command.isBlank()) return
+        val command = ASREngine.captureCommand(context = ctx, timeoutMs = 7000)
+        Log.i("VoicePipeline", "Command captured: '$command'")
+        if (command.isNullOrBlank()) return
 
         TTS.speak("Got it.", TTS.QUEUE_ADD)
         OmnixOrchestrator.handleVoiceIntent(command, ctx)

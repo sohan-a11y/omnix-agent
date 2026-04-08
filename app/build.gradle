@@ -1,8 +1,8 @@
 plugins {
     id "com.android.application"
     id "org.jetbrains.kotlin.android"
-    id "com.google.devtools.ksp" version "2.0.0-1.0.21"
-    id "org.jetbrains.kotlin.plugin.serialization" version "2.0.0"
+    id "com.google.devtools.ksp" version "2.2.21-2.0.5"
+    id "org.jetbrains.kotlin.plugin.serialization" version "2.2.21"
 }
 
 android {
@@ -88,13 +88,13 @@ android {
 }
 
 dependencies {
-    // MediaPipe LLM Inference - Gemma on-device inference (GA, available on Maven)
-    implementation "com.google.mediapipe:tasks-genai:0.10.22"
+    // LiteRT-LM — runs .litertlm models (Gemma 4 E2B) with GPU acceleration
+    implementation "com.google.ai.edge.litertlm:litertlm-android:0.10.0"
 
     // Room Database
-    implementation "androidx.room:room-runtime:2.6.1"
-    implementation "androidx.room:room-ktx:2.6.1"
-    ksp "androidx.room:room-compiler:2.6.1"
+    implementation "androidx.room:room-runtime:2.7.1"
+    implementation "androidx.room:room-ktx:2.7.1"
+    ksp "androidx.room:room-compiler:2.7.1"
 
     // Kotlin Serialization
     implementation "org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3"

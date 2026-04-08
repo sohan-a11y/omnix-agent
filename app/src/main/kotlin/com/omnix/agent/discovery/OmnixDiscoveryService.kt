@@ -2,7 +2,10 @@ package com.omnix.agent.discovery
 
 import android.app.*
 import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.omnix.agent.ui.OnboardingActivity
 import kotlinx.coroutines.*
@@ -21,14 +24,24 @@ class OmnixDiscoveryService : Service() {
         super.onCreate()
         discoveryEngine = DiscoveryEngine(applicationContext)
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification("Discovering apps..."))
+        // Must call startForeground immediately with correct type (Android 10+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(NOTIFICATION_ID, buildNotification("Starting app discovery…"),
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        } else {
+            startForeground(NOTIFICATION_ID, buildNotification("Starting app discovery…"))
+        }
+        Log.i("OmnixDisc", "OmnixDiscoveryService created")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.i("OmnixDisc", "onStartCommand action=${intent?.action}")
         when (intent?.action) {
             "com.omnix.agent.ACTION_BOOT_DISCOVERY" -> {
                 scope.launch {
-                    discoveryEngine.enumerateApps()
+                    Log.i("OmnixDisc", "Boot discovery starting")
+                    val apps = discoveryEngine.enumerateApps()
+                    Log.i("OmnixDisc", "Boot discovery done: ${apps.size} apps indexed")
                     stopSelf()
                 }
             }
@@ -47,12 +60,10 @@ class OmnixDiscoveryService : Service() {
                 }
             }
             "com.omnix.agent.ACTION_DISCOVER_ALL" -> {
-                scope.launch {
-                    val apps = discoveryEngine.enumerateApps()
-                    updateNotification("Discovering ${apps.size} apps...")
-                    discoveryEngine.discoverAllApps()
-                    stopSelf()
-                }
+                // Delegate to WorkManager-based batched discovery (Samsung-safe)
+                Log.i("OmnixDisc", "Delegating full discovery to AppDiscoveryWorker")
+                AppDiscoveryWorker.enqueueFullDiscovery(applicationContext)
+                stopSelf()
             }
         }
         return START_NOT_STICKY

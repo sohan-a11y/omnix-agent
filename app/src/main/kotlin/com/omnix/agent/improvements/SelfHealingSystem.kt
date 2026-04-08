@@ -54,8 +54,7 @@ class SelfHealingSystem(private val a11y: OmnixAccessibilityService) {
             system = """You are an Android automation healer.
                 Given a failed step and current screen state, suggest which element to use.
                 Respond with JSON: {"resourceId":"","text":"","contentDesc":""}""",
-            user = "Failed step: ${step.action} on ${sel.resourceId}\nScreen:\n$screenDump",
-            maxTokens = 100
+            user = "Failed step: ${step.action} on ${sel.resourceId}\nScreen:\n$screenDump"
         )
 
         return false // Could not heal

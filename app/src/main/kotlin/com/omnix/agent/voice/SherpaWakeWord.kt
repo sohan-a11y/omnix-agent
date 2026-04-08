@@ -24,7 +24,7 @@ object SherpaWakeWord {
 
     const val KWS_DIR = WhisperEngine.MODEL_DIR   // same model, grammar mode
 
-    private const val GRAMMAR        = """["hey omnix", "[unk]"]"""
+    private const val GRAMMAR        = """["hi ai", "[unk]"]"""
     private const val SAMPLE_RATE    = 16_000
     private const val FRAME_SHORTS   = 4000        // 250 ms per processFrame call
 
@@ -73,7 +73,7 @@ object SherpaWakeWord {
         return@withContext try {
             r.acceptWaveForm(bytes, bytes.size)
             val partial = JSONObject(r.partialResult).optString("partial", "")
-            partial.contains("hey omnix", ignoreCase = true)
+            partial.contains("hi ai", ignoreCase = true)
         } catch (_: Exception) { false }
     }
 

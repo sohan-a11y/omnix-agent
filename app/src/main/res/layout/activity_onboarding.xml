@@ -2,135 +2,415 @@
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/omnix_blue_dark">
+    android:background="@color/omnix_bg"
+    android:fillViewport="true">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="24dp">
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:paddingTop="48dp"
+        android:paddingBottom="32dp">
 
-        <!-- Logo/Title -->
+        <!-- ── Header ─────────────────────────────────────── -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="OMNIX"
-            android:textSize="48sp"
-            android:textColor="#FFFFFF"
+            android:textSize="52sp"
+            android:textColor="@color/omnix_text_primary"
             android:textStyle="bold"
             android:gravity="center"
-            android:layout_marginTop="32dp"
-            android:layout_marginBottom="8dp" />
+            android:letterSpacing="0.15"
+            android:layout_marginBottom="6dp" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Autonomous AI Agent for Android"
-            android:textSize="16sp"
-            android:textColor="#90CAF9"
+            android:text="Your On-Device AI Agent"
+            android:textSize="15sp"
+            android:textColor="@color/omnix_accent"
             android:gravity="center"
-            android:layout_marginBottom="40dp" />
-
-        <!-- Step 1: Accessibility -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Step 1: Enable Accessibility Service"
-            android:textColor="#FFFFFF"
-            android:textSize="16sp"
-            android:textStyle="bold"
             android:layout_marginBottom="8dp" />
 
-        <Button
-            android:id="@+id/btn_grant_accessibility"
-            android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:text="Open Accessibility Settings"
-            android:layout_marginBottom="24dp" />
+        <!-- Live status pill -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:layout_gravity="center"
+            android:background="@drawable/bg_status_pill"
+            android:orientation="horizontal"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="32dp">
 
-        <!-- Step 2: Overlay -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Step 2: Allow Overlay Permission"
-            android:textColor="#FFFFFF"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            android:layout_marginBottom="8dp" />
+            <View
+                android:id="@+id/dot_status"
+                android:layout_width="8dp"
+                android:layout_height="8dp"
+                android:background="@drawable/bg_status_dot_red"
+                android:layout_marginEnd="8dp" />
 
-        <Button
-            android:id="@+id/btn_grant_overlay"
-            android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:text="Grant Overlay Permission"
-            android:layout_marginBottom="24dp" />
+            <TextView
+                android:id="@+id/tv_live_status"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Setup Required"
+                android:textSize="12sp"
+                android:textColor="@color/omnix_text_secondary" />
+        </LinearLayout>
 
-        <!-- Step 3: Model Download -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Step 3: Download Gemma 4 AI Model (~2 GB, Wi-Fi recommended)"
-            android:textColor="#FFFFFF"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            android:layout_marginBottom="8dp" />
-
-        <Button
-            android:id="@+id/btn_download_model"
-            android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:text="Download Gemma 4 Model"
-            android:layout_marginBottom="8dp" />
-
-        <!-- Download progress (hidden until download starts) -->
-        <ProgressBar
-            android:id="@+id/progress_download"
-            style="?android:attr/progressBarStyleHorizontal"
-            android:layout_width="match_parent"
-            android:layout_height="12dp"
-            android:max="100"
-            android:progress="0"
-            android:visibility="gone"
-            android:layout_marginBottom="4dp" />
-
-        <TextView
-            android:id="@+id/tv_download_status"
+        <!-- ── Card 1: Accessibility ──────────────────────── -->
+        <LinearLayout
+            android:id="@+id/card_accessibility"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text=""
-            android:textColor="#90CAF9"
-            android:textSize="13sp"
-            android:gravity="center"
-            android:visibility="gone"
-            android:layout_marginBottom="24dp" />
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="18dp"
+            android:layout_marginBottom="12dp">
 
-        <!-- Step 4: Speech Model (auto) -->
-        <TextView
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="6dp">
+
+                <View
+                    android:id="@+id/dot_accessibility"
+                    android:layout_width="10dp"
+                    android:layout_height="10dp"
+                    android:background="@drawable/bg_status_dot_red"
+                    android:layout_marginEnd="10dp" />
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Accessibility Service"
+                    android:textColor="@color/omnix_text_primary"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tv_accessibility_badge"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="REQUIRED"
+                    android:textSize="10sp"
+                    android:textColor="@color/omnix_red"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Lets OMNIX read your screen and tap buttons"
+                android:textColor="@color/omnix_text_secondary"
+                android:textSize="13sp"
+                android:layout_marginBottom="12dp" />
+
+            <Button
+                android:id="@+id/btn_grant_accessibility"
+                android:layout_width="match_parent"
+                android:layout_height="44dp"
+                android:text="Enable in Settings"
+                android:textSize="13sp"
+                android:backgroundTint="@color/omnix_accent" />
+        </LinearLayout>
+
+        <!-- ── Card 2: Overlay ────────────────────────────── -->
+        <LinearLayout
+            android:id="@+id/card_overlay"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Step 4: Voice Model (Vosk ~40 MB, downloads automatically)"
-            android:textColor="#FFFFFF"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            android:layout_marginBottom="8dp" />
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="18dp"
+            android:layout_marginBottom="12dp">
 
-        <TextView
-            android:id="@+id/tv_vosk_status"
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="6dp">
+
+                <View
+                    android:id="@+id/dot_overlay"
+                    android:layout_width="10dp"
+                    android:layout_height="10dp"
+                    android:background="@drawable/bg_status_dot_red"
+                    android:layout_marginEnd="10dp" />
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Display Over Other Apps"
+                    android:textColor="@color/omnix_text_primary"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tv_overlay_badge"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="REQUIRED"
+                    android:textSize="10sp"
+                    android:textColor="@color/omnix_red"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Shows OMNIX overlay during actions"
+                android:textColor="@color/omnix_text_secondary"
+                android:textSize="13sp"
+                android:layout_marginBottom="12dp" />
+
+            <Button
+                android:id="@+id/btn_grant_overlay"
+                android:layout_width="match_parent"
+                android:layout_height="44dp"
+                android:text="Grant Permission"
+                android:textSize="13sp"
+                android:backgroundTint="@color/omnix_accent" />
+        </LinearLayout>
+
+        <!-- ── Card 3: Voice Model ────────────────────────── -->
+        <LinearLayout
+            android:id="@+id/card_voice"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Checking voice model…"
-            android:textColor="#90CAF9"
-            android:textSize="14sp"
-            android:layout_marginBottom="24dp" />
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="18dp"
+            android:layout_marginBottom="12dp">
 
-        <!-- Start Button -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="6dp">
+
+                <View
+                    android:id="@+id/dot_voice"
+                    android:layout_width="10dp"
+                    android:layout_height="10dp"
+                    android:background="@drawable/bg_status_dot_yellow"
+                    android:layout_marginEnd="10dp" />
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Voice Model (Vosk ~40 MB)"
+                    android:textColor="@color/omnix_text_primary"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tv_voice_badge"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="AUTO"
+                    android:textSize="10sp"
+                    android:textColor="@color/omnix_yellow"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/tv_vosk_status"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Checking…"
+                android:textColor="@color/omnix_text_secondary"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <!-- ── Card 4: AI Model ───────────────────────────── -->
+        <LinearLayout
+            android:id="@+id/card_ai"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="18dp"
+            android:layout_marginBottom="12dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="6dp">
+
+                <View
+                    android:id="@+id/dot_ai"
+                    android:layout_width="10dp"
+                    android:layout_height="10dp"
+                    android:background="@drawable/bg_status_dot_yellow"
+                    android:layout_marginEnd="10dp" />
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Gemma 4 AI Model (~2.6 GB)"
+                    android:textColor="@color/omnix_text_primary"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tv_ai_badge"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="OPTIONAL"
+                    android:textSize="10sp"
+                    android:textColor="@color/omnix_blue"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Enables advanced AI commands — app works without it"
+                android:textColor="@color/omnix_text_secondary"
+                android:textSize="13sp"
+                android:layout_marginBottom="8dp" />
+
+            <ProgressBar
+                android:id="@+id/progress_download"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="6dp"
+                android:max="100"
+                android:progress="0"
+                android:visibility="gone"
+                android:progressTint="@color/omnix_accent"
+                android:layout_marginBottom="6dp" />
+
+            <TextView
+                android:id="@+id/tv_download_status"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text=""
+                android:textColor="@color/omnix_text_secondary"
+                android:textSize="12sp"
+                android:visibility="gone"
+                android:layout_marginBottom="8dp" />
+
+            <Button
+                android:id="@+id/btn_download_model"
+                android:layout_width="match_parent"
+                android:layout_height="44dp"
+                android:text="Download Gemma 4 AI"
+                android:textSize="13sp"
+                android:backgroundTint="@color/omnix_bg_card2" />
+        </LinearLayout>
+
+        <!-- ── Card 5: App Learning ───────────────────────── -->
+        <LinearLayout
+            android:id="@+id/card_discovery"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="18dp"
+            android:layout_marginBottom="24dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="6dp">
+
+                <View
+                    android:id="@+id/dot_discovery"
+                    android:layout_width="10dp"
+                    android:layout_height="10dp"
+                    android:background="@drawable/bg_status_dot_yellow"
+                    android:layout_marginEnd="10dp" />
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="App Knowledge Base"
+                    android:textColor="@color/omnix_text_primary"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tv_discovery_badge"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="AUTO"
+                    android:textSize="10sp"
+                    android:textColor="@color/omnix_yellow"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <ProgressBar
+                android:id="@+id/progress_discovery"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="6dp"
+                android:max="100"
+                android:progress="0"
+                android:visibility="gone"
+                android:progressTint="@color/omnix_green"
+                android:layout_marginBottom="6dp" />
+
+            <TextView
+                android:id="@+id/tv_discovery_status"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Learns all your apps — reads layouts, activities, permissions"
+                android:textColor="@color/omnix_text_secondary"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <!-- ── Launch Button ──────────────────────────────── -->
         <Button
             android:id="@+id/btn_start"
             android:layout_width="match_parent"
-            android:layout_height="56dp"
-            android:text="Start OMNIX"
-            android:textSize="18sp"
-            android:layout_marginTop="8dp" />
+            android:layout_height="60dp"
+            android:text="LAUNCH OMNIX"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.1"
+            android:backgroundTint="@color/omnix_accent"
+            android:layout_marginBottom="12dp" />
+
+        <TextView
+            android:id="@+id/tv_start_hint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text='Say "Hi AI" after launching'
+            android:textColor="@color/omnix_text_secondary"
+            android:textSize="13sp"
+            android:gravity="center"
+            android:layout_marginBottom="12dp" />
+
+        <!-- Chat entry point -->
+        <Button
+            android:id="@+id/btn_open_chat"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:text="Open Chat"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:backgroundTint="@color/omnix_bg_card2"
+            android:layout_marginBottom="16dp" />
 
     </LinearLayout>
 </ScrollView>

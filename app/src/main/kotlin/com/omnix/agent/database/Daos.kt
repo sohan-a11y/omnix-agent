@@ -201,3 +201,38 @@ interface ScreenCrawlDao {
     @Query("SELECT * FROM screen_crawls WHERE packageId = :packageId AND screenName = :screenName ORDER BY crawledAt DESC LIMIT 1")
     suspend fun getLatestForScreen(packageId: String, screenName: String): ScreenCrawlEntity?
 }
+
+// ─── Chat Session DAO ─────────────────────────────────────────────────────────
+@Dao
+interface ChatSessionDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(session: ChatSessionEntity)
+
+    @Query("UPDATE chat_sessions SET endedAt=:ts, messageCount=:count, summary=:summary WHERE id=:id")
+    suspend fun finalize(id: String, ts: Long, count: Int, summary: String)
+
+    @Query("SELECT * FROM chat_sessions ORDER BY startedAt DESC LIMIT :limit")
+    suspend fun getRecent(limit: Int = 50): List<ChatSessionEntity>
+
+    @Query("SELECT * FROM chat_sessions WHERE id = :id")
+    suspend fun getById(id: String): ChatSessionEntity?
+
+    @Query("DELETE FROM chat_sessions WHERE id = :id")
+    suspend fun delete(id: String)
+}
+
+// ─── Chat Message DAO ─────────────────────────────────────────────────────────
+@Dao
+interface ChatMessageDao {
+    @Insert
+    suspend fun insert(message: ChatMessageEntity)
+
+    @Query("SELECT * FROM chat_messages WHERE sessionId = :sessionId ORDER BY timestamp ASC")
+    suspend fun getForSession(sessionId: String): List<ChatMessageEntity>
+
+    @Query("DELETE FROM chat_messages WHERE sessionId = :sessionId")
+    suspend fun deleteForSession(sessionId: String)
+
+    @Query("SELECT COUNT(*) FROM chat_messages WHERE sessionId = :sessionId")
+    suspend fun countForSession(sessionId: String): Int
+}

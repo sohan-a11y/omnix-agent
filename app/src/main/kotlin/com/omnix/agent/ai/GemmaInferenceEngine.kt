@@ -2,198 +2,367 @@ package com.omnix.agent.ai
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.os.Build
 import android.util.Base64
-import com.google.mediapipe.tasks.genai.llminference.LlmInference
+import android.util.Log
+import com.google.ai.edge.litertlm.Backend
+import com.google.ai.edge.litertlm.Conversation
+import com.google.ai.edge.litertlm.ConversationConfig
+import com.google.ai.edge.litertlm.Contents
+import com.google.ai.edge.litertlm.Engine
+import com.google.ai.edge.litertlm.EngineConfig
+import com.google.ai.edge.litertlm.LogSeverity
+import com.google.ai.edge.litertlm.SamplerConfig
+import com.omnix.agent.database.OmnixDatabase
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.ByteArrayOutputStream
-import java.io.File
 
+/**
+ * Gemma 4 E2B — the AI brain of OMNIX.
+ *
+ * Uses LiteRT-LM (com.google.ai.edge.litertlm) to load the .litertlm model
+ * with GPU acceleration on Snapdragon (arm64 via OpenCL).
+ *
+ * ALL intent parsing goes through Gemma when loaded.
+ * Knowledge base: every discovered app is injected into the system prompt.
+ */
 object GemmaInferenceEngine {
 
-    private var session: LlmInference? = null
+    private const val TAG = "GemmaEngine"
+
+    private var engine: Engine? = null
     private val mutex = Mutex()
-    private val json = Json { ignoreUnknownKeys = true }
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val json = Json { ignoreUnknownKeys = true; isLenient = true }
+
+    @Volatile private var appKnowledge: String = ""
+    @Volatile private var currentApp: String = ""
+
+    // Multi-turn chat session
+    private var chatConversation: Conversation? = null
+    private var chatMessageCount = 0
+
+    // ── Init ───────────────────────────────────────────────────────────────────
 
     fun initialize(context: Context) {
-        // Try Android AICore first (zero RAM cost for app, uses system Gemma)
-        if (Build.VERSION.SDK_INT >= 35) {
+        if (engine != null) {
+            Log.i(TAG, "Gemma already initialized")
+            return
+        }
+        val appCtx = context.applicationContext
+        scope.launch { initBlocking(appCtx) }
+    }
+
+    private suspend fun initBlocking(context: Context) = withContext(Dispatchers.IO) {
+        val modelFile = ModelDownloadManager.getModelFile(context)
+        if (!modelFile.exists()) {
+            Log.w(TAG, "Model not found at ${modelFile.absolutePath}")
+            return@withContext
+        }
+        Log.i(TAG, "Loading Gemma 4 E2B (${modelFile.length() / 1_048_576} MB) with GPU…")
+        try {
+            Engine.setNativeMinLogSeverity(LogSeverity.ERROR)
+            val config = EngineConfig(
+                modelPath  = modelFile.absolutePath,
+                backend    = Backend.GPU(),
+                cacheDir   = context.cacheDir.absolutePath,
+                maxNumTokens = 4096
+            )
+            val e = Engine(config)
+            e.initialize()
+            engine = e
+            Log.i(TAG, "✅ Gemma 4 E2B ready — GPU backend active")
+            loadAppKnowledge(context)
+        } catch (gpuEx: Exception) {
+            Log.w(TAG, "GPU init failed (${gpuEx.message}), retrying with CPU…")
             try {
-                initAICore(context)
-                return
-            } catch (e: Exception) {
-                // Fall through to local model
+                val config = EngineConfig(
+                    modelPath    = modelFile.absolutePath,
+                    backend      = Backend.CPU(),
+                    cacheDir     = context.cacheDir.absolutePath,
+                    maxNumTokens = 2048
+                )
+                val e = Engine(config)
+                e.initialize()
+                engine = e
+                Log.i(TAG, "✅ Gemma 4 E2B ready — CPU backend")
+                loadAppKnowledge(context)
+            } catch (cpuEx: Exception) {
+                Log.e(TAG, "❌ Gemma load failed: ${cpuEx.message}")
+                engine = null
             }
         }
+    }
 
-        val modelFile = ModelDownloadManager.getModelFile(context)
-        if (!modelFile.exists()) return // Not downloaded yet - will init after download
-
+    suspend fun loadAppKnowledge(context: Context) {
         try {
-            val options = LlmInference.LlmInferenceOptions.builder()
-                .setModelPath(modelFile.absolutePath)
-                .setMaxTokens(4096)
-                .build()
-            session = LlmInference.createFromOptions(context, options)
+            val apps = OmnixDatabase.getInstance(context).appDao().getDiscovered()
+            appKnowledge = buildString {
+                appendLine("INSTALLED APPS ON THIS DEVICE (${apps.size} total):")
+                apps.forEach { app ->
+                    append("• ${app.name} pkg=${app.packageName} category=${app.category}")
+                    val caps = app.capabilities
+                    if (!caps.isNullOrBlank() && caps != "[]" && caps != "{}") {
+                        // Extract capabilities list from JSON for compact representation
+                        val capMatch = Regex(""""capabilities":\[([^\]]*)\]""").find(caps)
+                        val capList = capMatch?.groupValues?.get(1)?.replace("\"","")?.trim()
+                        if (!capList.isNullOrBlank()) append(" can=[$capList]")
+                        val permMatch = Regex(""""permissions":\[([^\]]*)\]""").find(caps)
+                        val permList = permMatch?.groupValues?.get(1)?.replace("\"","")?.trim()
+                        if (!permList.isNullOrBlank()) append(" perms=[$permList]")
+                    }
+                    appendLine()
+                }
+            }
+            Log.i(TAG, "App knowledge: ${apps.size} apps loaded into Gemma")
         } catch (e: Exception) {
-            // Model load failed - will retry on next launch
+            Log.w(TAG, "App knowledge load failed: ${e.message}")
         }
     }
 
-    private fun initAICore(context: Context) {
-        // Android 15+ AICore integration - uses system-level Gemma
-        // Zero additional RAM usage for the app
-        // LlmInference.createFromAiCore(context) when API is available
-    }
+    fun setCurrentApp(pkg: String) { currentApp = pkg }
+    fun isReady(): Boolean = engine != null
 
-    fun isReady(): Boolean = session != null
+    // ── Core generation ────────────────────────────────────────────────────────
 
-    suspend fun generate(
-        system: String,
-        user: String,
-        maxTokens: Int = 1000,
-        thinking: Boolean = false
-    ): String = mutex.withLock {
-        val s = session ?: return@withLock "{}"
-        val prompt = buildPrompt(system, user, thinking)
-        s.generateResponse(prompt)
-    }
-
-    private fun buildPrompt(system: String, user: String, thinking: Boolean): String {
-        return buildString {
-            if (thinking) append("<|think|>\n")
-            append("<start_of_turn>system\n$system<end_of_turn>\n")
-            append("<start_of_turn>user\n$user<end_of_turn>\n")
-            append("<start_of_turn>model\n")
-        }
-    }
-
-    // ── Intent extraction from voice query ────────────────────────────────────
-    suspend fun extractIntent(query: String): IntentResult {
-        val raw = generate(INTENT_SYSTEM, query, maxTokens = 300)
-        return try {
-            json.decodeFromString(raw.extractJsonBlock())
-        } catch (e: Exception) {
-            IntentResult(intent = "unknown", entities = emptyMap(), confidence = 0f,
-                ambiguous = true, clarification = "Could not parse intent")
-        }
-    }
-
-    // ── Vision-based UI element finding ───────────────────────────────────────
-    suspend fun findElementByVision(bmp: Bitmap, label: String): ElementCoords? {
-        val b64 = bmp.toBase64Jpeg()
-        return try {
-            val raw = generate(VISION_SYSTEM, "{\"image\":\"$b64\",\"label\":\"$label\"}", maxTokens = 100)
-            json.decodeFromString(raw.extractJsonBlock())
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    // ── Generate embedding for semantic skill matching ─────────────────────────
     /**
-     * Generates a 768-dim text embedding.
-     * Uses Gemma output if model is ready; falls back to deterministic n-gram hashing.
+     * Single-turn generation with a system prompt.
+     * Uses a fresh conversation per call — correct for structured JSON tasks.
      */
-    suspend fun generateEmbedding(text: String): FloatArray = mutex.withLock {
-        tfidfEmbedding(text)  // deterministic fallback that works without model
+    suspend fun generate(system: String, user: String): String = mutex.withLock {
+        val e = engine ?: return@withLock "{}"
+        return@withLock withContext(Dispatchers.IO) {
+            try {
+                val conv = e.createConversation(
+                    ConversationConfig(
+                        systemInstruction = Contents.of(system),
+                        samplerConfig     = SamplerConfig(topK = 1, topP = 0.95, temperature = 0.1)
+                    )
+                )
+                val chunks = mutableListOf<String>()
+                conv.sendMessageAsync(user)
+                    .catch { ex -> Log.e(TAG, "Generation error: ${ex.message}") }
+                    .collect { msg -> chunks.add(msg.toString()) }
+                conv.close()
+                chunks.joinToString("")
+            } catch (e: Exception) {
+                Log.e(TAG, "generate() failed: ${e.message}")
+                "{}"
+            }
+        }
     }
 
-    /** Deterministic 768-dim embedding via character n-gram hashing. Normalized to unit length. */
+    // ── Intent extraction — Gemma is the ONLY path ────────────────────────────
+
+    suspend fun extractIntent(query: String): IntentResult? {
+        if (engine == null) {
+            Log.w(TAG, "Gemma not ready — model not loaded")
+            return null
+        }
+        return runCatching { extractWithGemma(query) }
+            .onFailure { Log.e(TAG, "extractIntent error: ${it.message}") }
+            .getOrNull()
+    }
+
+    private suspend fun extractWithGemma(query: String): IntentResult {
+        val raw = generate(buildIntentSystem(), query)
+        Log.d(TAG, "Gemma raw: ${raw.take(300)}")
+        return try {
+            json.decodeFromString<IntentResult>(raw.extractJsonBlock())
+        } catch (e: Exception) {
+            Log.w(TAG, "JSON parse failed: ${raw.take(100)}")
+            IntentResult(
+                intent        = "parse_error",
+                entities      = emptyMap(),
+                confidence    = 0f,
+                ambiguous     = true,
+                clarification = "I didn't catch that. Could you say it again?"
+            )
+        }
+    }
+
+    private fun buildIntentSystem(): String = buildString {
+        appendLine("""
+You are OMNIX, an Android AI assistant. Convert voice commands to JSON intents.
+Output ONLY valid JSON — no markdown, no explanation.
+
+Schema:
+{"intent":"<name>","entities":{"app":"<package>","app_name":"","contact":"","amount":"","text":"","query":"","destination":"","time":"","task":""},"confidence":0.95,"ambiguous":false,"clarification":""}
+
+Intents: launch_app | make_call | send_message | transfer_money | check_balance | navigate | set_alarm | set_reminder | play_music | search_web | take_photo | send_email | youtube_play | open_settings | unknown
+
+Rules:
+- launch_app → put exact package name in entities.app
+- make_call → entities.contact = person name
+- send_message → entities.contact, text, app (package)
+- transfer_money → entities.contact, amount (digits only)
+- navigate → entities.destination
+- set_alarm → entities.time
+- unknown → confidence < 0.3, ambiguous=true, clarification=ask user
+        """.trimIndent())
+
+        if (appKnowledge.isNotBlank()) {
+            appendLine()
+            appendLine(appKnowledge)
+        }
+        if (currentApp.isNotBlank()) appendLine("CURRENT APP: $currentApp")
+    }
+
+    // ── Chat (multi-turn conversation) ────────────────────────────────────────
+
+    /**
+     * Multi-turn conversational response.
+     * Reuses a persistent Conversation session (up to 20 turns, then resets).
+     * Used by ChatActivity for natural back-and-forth dialogue.
+     */
+    suspend fun converse(userMessage: String): String = mutex.withLock {
+        val e = engine
+            ?: return@withLock "The AI model isn't loaded yet. Download Gemma from the setup screen."
+        return@withLock withContext(Dispatchers.IO) {
+            try {
+                if (chatConversation == null || chatMessageCount >= 20) {
+                    chatConversation?.close()
+                    chatConversation = e.createConversation(
+                        ConversationConfig(
+                            systemInstruction = Contents.of(buildChatSystem()),
+                            samplerConfig     = SamplerConfig(topK = 40, topP = 0.95, temperature = 0.7)
+                        )
+                    )
+                    chatMessageCount = 0
+                }
+                val conv = chatConversation!!
+                val chunks = mutableListOf<String>()
+                conv.sendMessageAsync(userMessage)
+                    .catch { ex -> Log.e(TAG, "Converse error: ${ex.message}") }
+                    .collect { msg -> chunks.add(msg.toString()) }
+                chatMessageCount++
+                chunks.joinToString("").trim().ifEmpty { "I'm not sure how to respond to that." }
+            } catch (ex: Exception) {
+                Log.e(TAG, "converse() failed: ${ex.message}")
+                chatConversation?.close()
+                chatConversation = null
+                chatMessageCount = 0
+                "Sorry, something went wrong. Please try again."
+            }
+        }
+    }
+
+    fun clearChatHistory() {
+        chatConversation?.close()
+        chatConversation = null
+        chatMessageCount = 0
+    }
+
+    private fun buildChatSystem(): String = buildString {
+        appendLine("You are OMNIX, an intelligent on-device AI assistant for Android.")
+        appendLine("You help with Android tasks (open apps, send messages, calls, navigation, etc.) and hold natural conversations.")
+        appendLine("Be concise, friendly, and helpful. When you execute a task say what you did.")
+        appendLine("You run entirely on-device — AI processing needs no internet.")
+        if (appKnowledge.isNotBlank()) {
+            appendLine()
+            appendLine(appKnowledge)
+        }
+        if (currentApp.isNotBlank()) appendLine("CURRENT APP: $currentApp")
+    }
+
+    // ── Vision ─────────────────────────────────────────────────────────────────
+
+    suspend fun findElementByVision(bmp: Bitmap, label: String): ElementCoords? {
+        return try {
+            val raw = generate(
+                "Find UI element. JSON only: {\"found\":true,\"x_pct\":0.5,\"y_pct\":0.5,\"confidence\":0.9}",
+                "label: $label"
+            )
+            json.decodeFromString(raw.extractJsonBlock())
+        } catch (_: Exception) { null }
+    }
+
+    // ── Skill reranking ────────────────────────────────────────────────────────
+
+    suspend fun rerankSkills(intent: IntentResult, candidates: List<String>): Int {
+        val list = candidates.mapIndexed { i, c -> "${i + 1}. $c" }.joinToString("\n")
+        val raw = generate(
+            "Pick best skill for intent. Reply with ONLY a single digit (1, 2, or 3).",
+            "Intent: ${intent.intent}\nEntities: ${intent.entities}\nOptions:\n$list"
+        )
+        return raw.trim().firstOrNull()?.digitToIntOrNull()?.minus(1) ?: 0
+    }
+
+    // ── Embedding (deterministic, always works) ────────────────────────────────
+
+    suspend fun generateEmbedding(text: String): FloatArray = mutex.withLock {
+        tfidfEmbedding(text)
+    }
+
     private fun tfidfEmbedding(text: String): FloatArray {
         val dims = 768
-        val result = FloatArray(dims)
+        val v = FloatArray(dims)
         val words = text.lowercase().split("\\s+".toRegex()).filter { it.isNotEmpty() }
-        if (words.isEmpty()) return result
-        words.forEach { word ->
-            word.forEachIndexed { i, c ->
-                val hash = (word.hashCode() * 31 + c.code + i * 7)
-                val idx = Math.abs(hash) % dims
-                result[idx] += 1.0f / words.size
+        if (words.isEmpty()) return v
+        words.forEach { w ->
+            w.forEachIndexed { i, c ->
+                v[Math.abs(w.hashCode() * 31 + c.code + i * 7) % dims] += 1f / words.size
             }
         }
-        // L2 normalize
-        val norm = Math.sqrt(result.map { it * it }.sum().toDouble()).toFloat()
-        if (norm > 0f) result.forEachIndexed { i, v -> result[i] = v / norm }
-        return result
+        val norm = Math.sqrt(v.map { it * it }.sum().toDouble()).toFloat()
+        if (norm > 0f) v.forEachIndexed { i, x -> v[i] = x / norm }
+        return v
     }
 
-    // ── Context compaction for long-running tasks ─────────────────────────────
-    suspend fun compactContext(messages: List<String>, goal: String): String {
-        return generate(
-            COMPACT_SYSTEM,
-            "Goal: $goal\nHistory:\n${messages.joinToString("\n")}",
-            maxTokens = 500
+    // ── Context / screen helpers ───────────────────────────────────────────────
+
+    suspend fun compactContext(messages: List<String>, goal: String): String =
+        generate(
+            "Compress task history into max 300 words. Preserve: goal, actions, results.",
+            "Goal: $goal\nHistory:\n${messages.joinToString("\n")}"
         )
-    }
 
-    // ── Classify app screen ───────────────────────────────────────────────────
-    suspend fun classifyScreen(screenTree: String): String {
-        return generate(
-            CLASSIFY_SYSTEM,
-            "Screen tree:\n$screenTree",
-            maxTokens = 200
+    suspend fun classifyScreen(screenTree: String): String =
+        generate(
+            "Classify Android screen. JSON only: {\"screen_type\":\"login|home|list|form|payment|settings|other\",\"confidence\":0.9}",
+            screenTree
         )
-    }
-
-    // ── System prompts ────────────────────────────────────────────────────────
-    private val INTENT_SYSTEM = """
-        You are an intent extraction engine for device automation.
-        Respond ONLY with JSON, no markdown:
-        {"intent":"send_message|make_call|check_balance|transfer_money|...",
-         "entities":{"contact":"","app":"","amount":"","text":"","date":""},
-         "confidence":0.0,"ambiguous":false,"clarification":""}
-    """.trimIndent()
-
-    private val VISION_SYSTEM = """
-        Analyze this screenshot. Find the UI element matching the label.
-        Respond ONLY with JSON:
-        {"found":true,"x_pct":0.0,"y_pct":0.0,"confidence":0.0}
-    """.trimIndent()
-
-    private val COMPACT_SYSTEM = """
-        Compress this agent task history into max 400 words.
-        Preserve: goal, what was done, key results, errors, current state.
-    """.trimIndent()
-
-    private val CLASSIFY_SYSTEM = """
-        Classify this Android screen. Respond ONLY with JSON:
-        {"screen_type":"login|home|list|detail|form|payment|settings|other",
-         "confidence":0.0,"elements_of_interest":["id1","id2"]}
-    """.trimIndent()
 }
 
-// ── Data classes ─────────────────────────────────────────────────────────────
+// ── Data classes ───────────────────────────────────────────────────────────────
+
 @Serializable
 data class IntentResult(
     val intent: String,
-    val entities: Map<String, String?>,
-    val confidence: Float,
-    val ambiguous: Boolean,
-    val clarification: String?
+    val entities: Map<String, String?> = emptyMap(),
+    val confidence: Float = 0f,
+    val ambiguous: Boolean = false,
+    val clarification: String? = null
 )
 
 @Serializable
 data class ElementCoords(
     val found: Boolean,
-    val xPct: Float,
-    val yPct: Float,
-    val confidence: Float
+    val xPct: Float = 0f,
+    val yPct: Float = 0f,
+    val confidence: Float = 0f
 )
 
-// ── Extension functions ───────────────────────────────────────────────────────
-fun Bitmap.toBase64Jpeg(quality: Int = 50): String {
-    val stream = ByteArrayOutputStream()
-    compress(Bitmap.CompressFormat.JPEG, quality, stream)
-    return Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP)
+// ── Extensions ────────────────────────────────────────────────────────────────
+
+fun Bitmap.toBase64Jpeg(quality: Int = 40): String {
+    val s = ByteArrayOutputStream()
+    compress(Bitmap.CompressFormat.JPEG, quality, s)
+    return Base64.encodeToString(s.toByteArray(), Base64.NO_WRAP)
 }
 
 fun String.extractJsonBlock(): String {
     val start = indexOfFirst { it == '{' || it == '[' }
-    val end = indexOfLast { it == '}' || it == ']' }
+    val end   = indexOfLast  { it == '}' || it == ']' }
     return if (start >= 0 && end > start) substring(start, end + 1) else this
 }
 

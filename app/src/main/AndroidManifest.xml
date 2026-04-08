@@ -59,6 +59,10 @@
         android:usesCleartextTraffic="false"
         android:requestLegacyExternalStorage="false">
 
+        <!-- LiteRT-LM GPU acceleration (OpenCL on Snapdragon) -->
+        <uses-native-library android:name="libvndksupport.so" android:required="false"/>
+        <uses-native-library android:name="libOpenCL.so" android:required="false"/>
+
         <!-- Main Accessibility Service -->
         <service
             android:name=".core.OmnixAccessibilityService"
@@ -137,6 +141,25 @@
             android:name=".ui.SettingsActivity"
             android:exported="false"
             android:parentActivityName=".ui.OnboardingActivity" />
+
+        <!-- Chat Activity -->
+        <activity
+            android:name=".ui.ChatActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize"
+            android:parentActivityName=".ui.OnboardingActivity" />
+
+        <!-- Chat History -->
+        <activity
+            android:name=".ui.ChatHistoryActivity"
+            android:exported="false"
+            android:parentActivityName=".ui.ChatActivity" />
+
+        <!-- Chat Session Detail -->
+        <activity
+            android:name=".ui.ChatSessionDetailActivity"
+            android:exported="false"
+            android:parentActivityName=".ui.ChatHistoryActivity" />
 
         <!-- Discovery Test Activity (on-device integration testing) -->
         <activity

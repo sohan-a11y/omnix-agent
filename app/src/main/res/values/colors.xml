@@ -1,8 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="omnix_blue">#2196F3</color>
-    <color name="omnix_blue_dark">#0D47A1</color>
-    <color name="omnix_accent">#00BCD4</color>
+    <!-- Brand -->
+    <color name="omnix_bg">#08080F</color>
+    <color name="omnix_bg_card">#12121E</color>
+    <color name="omnix_bg_card2">#1A1A2E</color>
+    <color name="omnix_blue">#4C8EF7</color>
+    <color name="omnix_blue_dark">#08080F</color>
+    <color name="omnix_accent">#6C63FF</color>
+    <color name="omnix_accent2">#00D4FF</color>
+    <color name="omnix_green">#00E676</color>
+    <color name="omnix_red">#FF5252</color>
+    <color name="omnix_yellow">#FFD740</color>
+    <color name="omnix_text_primary">#FFFFFF</color>
+    <color name="omnix_text_secondary">#8892AA</color>
+    <color name="omnix_divider">#1E1E30</color>
     <color name="omnix_overlay_bg">#CC000000</color>
     <color name="omnix_overlay_text">#FFFFFF</color>
 </resources>
