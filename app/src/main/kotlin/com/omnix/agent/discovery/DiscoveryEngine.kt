@@ -213,6 +213,24 @@ class DiscoveryEngine(private val context: Context) {
                 onProgress?.invoke(index + 1, total)
                 delay(5) // yield the coroutine dispatcher — keeps Samsung happy
             }
+
+            // Deep APK analysis for high-value apps (banking, messaging, payments)
+            // Run after basic discovery so we don't block the enumeration phase.
+            val discovered = db.appDao().getDiscovered()
+            val highValueApps = discovered.filter { app ->
+                app.category in setOf("banking", "payments", "messaging", "shopping")
+            }.take(10) // cap at 10 to avoid excessive time
+            if (highValueApps.isNotEmpty()) {
+                Log.i("OmnixDisc", "Running deep APK analysis for ${highValueApps.size} high-value apps")
+                highValueApps.forEach { app ->
+                    try {
+                        deepAnalyzeApp(app.id)
+                    } catch (e: Exception) {
+                        Log.w("OmnixDisc", "Deep analysis failed for ${app.id}: ${e.message}")
+                    }
+                    delay(100)
+                }
+            }
             Log.i("OmnixDisc", "discoverAllApps: complete")
         }
 

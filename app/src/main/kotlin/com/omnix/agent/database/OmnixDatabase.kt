@@ -116,9 +116,7 @@ abstract class OmnixDatabase : RoomDatabase() {
                     "omnix.db"
                 )
                     .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
-                    // Destructive migration only as a last resort if version is unrecognised
-                    // (e.g. developer test builds that skipped versions)
-                    .fallbackToDestructiveMigrationFrom(1, 2)
+                    .fallbackToDestructiveMigration()
                     .build()
                     .also { INSTANCE = it }
             }
