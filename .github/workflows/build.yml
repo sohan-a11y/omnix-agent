@@ -29,6 +29,16 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
+      # ── Code Quality Gates ─────────────────────────────────────────────────
+      - name: Run KtLint
+        run: ./gradlew ktlintCheck
+
+      - name: Run Detekt
+        run: ./gradlew detekt
+
+      - name: Run Unit Tests
+        run: ./gradlew testDebugUnitTest
+
       - name: Decode Keystore
         run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > keystore.jks
 
@@ -40,12 +50,13 @@ jobs:
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          VERSION_CODE: ${{ github.run_number }}
 
       - name: Upload Signed APK as Artifact
         if: "!startsWith(github.ref, 'refs/tags/v')"
         uses: actions/upload-artifact@v4
         with:
-          name: OMNIX-signed-${{ github.sha }}
+          name: OMNIX-build-${{ github.run_number }}-${{ github.sha }}
           path: app/build/outputs/apk/release/*.apk
           retention-days: 30
 

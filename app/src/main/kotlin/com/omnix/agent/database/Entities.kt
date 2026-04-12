@@ -63,7 +63,11 @@ data class ElementEntity(
     val isClickable: Boolean,
     val isEditable: Boolean,
     val isScrollable: Boolean = false,
-    val depth: Int = 0
+    val depth: Int = 0,
+    val parentId: String = "",
+    val visibility: Int = 0,        // 0=VISIBLE, 1=INVISIBLE, 2=GONE
+    val isEnabled: Boolean = true,
+    val zIndex: Int = 0
 )
 
 // ─── Entity 4: Skills ────────────────────────────────────────────────────────

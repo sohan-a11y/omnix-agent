@@ -70,7 +70,7 @@ class SettingsActivity : AppCompatActivity() {
         val rediscoverBtn = findViewById<Button>(R.id.btn_rediscover_all)
         rediscoverBtn?.setOnClickListener {
             // Trigger background discovery for all apps
-            Toast.makeText(this, "Discovery started in background", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.settings_discovery_started), Toast.LENGTH_SHORT).show()
         }
     }
 

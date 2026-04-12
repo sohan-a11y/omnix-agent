@@ -18,7 +18,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="OMNIX"
+            android:text="@string/app_name"
             android:textSize="52sp"
             android:textColor="@color/omnix_text_primary"
             android:textStyle="bold"
@@ -29,7 +29,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Your On-Device AI Agent"
+            android:text="@string/onboarding_subtitle"
             android:textSize="15sp"
             android:textColor="@color/omnix_accent"
             android:gravity="center"
@@ -58,7 +58,7 @@
                 android:id="@+id/tv_live_status"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Setup Required"
+                android:text="@string/onboarding_status_setup_required"
                 android:textSize="12sp"
                 android:textColor="@color/omnix_text_secondary" />
         </LinearLayout>
@@ -91,7 +91,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="Accessibility Service"
+                    android:text="@string/onboarding_accessibility_title"
                     android:textColor="@color/omnix_text_primary"
                     android:textSize="15sp"
                     android:textStyle="bold" />
@@ -100,7 +100,7 @@
                     android:id="@+id/tv_accessibility_badge"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="REQUIRED"
+                    android:text="@string/badge_required"
                     android:textSize="10sp"
                     android:textColor="@color/omnix_red"
                     android:textStyle="bold" />
@@ -109,7 +109,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Lets OMNIX read your screen and tap buttons"
+                android:text="@string/onboarding_accessibility_desc"
                 android:textColor="@color/omnix_text_secondary"
                 android:textSize="13sp"
                 android:layout_marginBottom="12dp" />
@@ -118,7 +118,7 @@
                 android:id="@+id/btn_grant_accessibility"
                 android:layout_width="match_parent"
                 android:layout_height="44dp"
-                android:text="Enable in Settings"
+                android:text="@string/btn_enable_in_settings"
                 android:textSize="13sp"
                 android:backgroundTint="@color/omnix_accent" />
         </LinearLayout>
@@ -151,7 +151,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="Display Over Other Apps"
+                    android:text="@string/onboarding_overlay_title"
                     android:textColor="@color/omnix_text_primary"
                     android:textSize="15sp"
                     android:textStyle="bold" />
@@ -160,7 +160,7 @@
                     android:id="@+id/tv_overlay_badge"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="REQUIRED"
+                    android:text="@string/badge_required"
                     android:textSize="10sp"
                     android:textColor="@color/omnix_red"
                     android:textStyle="bold" />
@@ -169,7 +169,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Shows OMNIX overlay during actions"
+                android:text="@string/onboarding_overlay_desc"
                 android:textColor="@color/omnix_text_secondary"
                 android:textSize="13sp"
                 android:layout_marginBottom="12dp" />
@@ -178,7 +178,7 @@
                 android:id="@+id/btn_grant_overlay"
                 android:layout_width="match_parent"
                 android:layout_height="44dp"
-                android:text="Grant Permission"
+                android:text="@string/btn_grant_permission"
                 android:textSize="13sp"
                 android:backgroundTint="@color/omnix_accent" />
         </LinearLayout>
@@ -211,7 +211,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="Voice Model (Vosk ~40 MB)"
+                    android:text="@string/onboarding_voice_title"
                     android:textColor="@color/omnix_text_primary"
                     android:textSize="15sp"
                     android:textStyle="bold" />
@@ -220,7 +220,7 @@
                     android:id="@+id/tv_voice_badge"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="AUTO"
+                    android:text="@string/badge_auto"
                     android:textSize="10sp"
                     android:textColor="@color/omnix_yellow"
                     android:textStyle="bold" />
@@ -230,7 +230,7 @@
                 android:id="@+id/tv_vosk_status"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Checking…"
+                android:text="@string/onboarding_status_checking"
                 android:textColor="@color/omnix_text_secondary"
                 android:textSize="13sp" />
         </LinearLayout>
@@ -263,7 +263,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="Gemma 4 AI Model (~2.6 GB)"
+                    android:text="@string/onboarding_ai_title"
                     android:textColor="@color/omnix_text_primary"
                     android:textSize="15sp"
                     android:textStyle="bold" />
@@ -272,7 +272,7 @@
                     android:id="@+id/tv_ai_badge"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="OPTIONAL"
+                    android:text="@string/badge_optional"
                     android:textSize="10sp"
                     android:textColor="@color/omnix_blue"
                     android:textStyle="bold" />
@@ -281,7 +281,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Enables advanced AI commands — app works without it"
+                android:text="@string/onboarding_ai_desc"
                 android:textColor="@color/omnix_text_secondary"
                 android:textSize="13sp"
                 android:layout_marginBottom="8dp" />
@@ -311,7 +311,7 @@
                 android:id="@+id/btn_download_model"
                 android:layout_width="match_parent"
                 android:layout_height="44dp"
-                android:text="Download Gemma 4 AI"
+                android:text="@string/onboarding_btn_download_gemma"
                 android:textSize="13sp"
                 android:backgroundTint="@color/omnix_bg_card2" />
         </LinearLayout>
@@ -344,7 +344,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="App Knowledge Base"
+                    android:text="@string/onboarding_discovery_title"
                     android:textColor="@color/omnix_text_primary"
                     android:textSize="15sp"
                     android:textStyle="bold" />
@@ -353,7 +353,7 @@
                     android:id="@+id/tv_discovery_badge"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="AUTO"
+                    android:text="@string/badge_auto"
                     android:textSize="10sp"
                     android:textColor="@color/omnix_yellow"
                     android:textStyle="bold" />
@@ -374,7 +374,7 @@
                 android:id="@+id/tv_discovery_status"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Learns all your apps — reads layouts, activities, permissions"
+                android:text="@string/onboarding_discovery_desc"
                 android:textColor="@color/omnix_text_secondary"
                 android:textSize="13sp" />
         </LinearLayout>
@@ -384,7 +384,7 @@
             android:id="@+id/btn_start"
             android:layout_width="match_parent"
             android:layout_height="60dp"
-            android:text="LAUNCH OMNIX"
+            android:text="@string/onboarding_btn_launch"
             android:textSize="16sp"
             android:textStyle="bold"
             android:letterSpacing="0.1"
@@ -406,7 +406,7 @@
             android:id="@+id/btn_open_chat"
             android:layout_width="match_parent"
             android:layout_height="52dp"
-            android:text="Open Chat"
+            android:text="@string/onboarding_btn_chat"
             android:textSize="15sp"
             android:textStyle="bold"
             android:backgroundTint="@color/omnix_bg_card2"

@@ -6,4 +6,97 @@
     <string name="notification_channel_main">OMNIX Agent</string>
     <string name="notification_channel_discovery">App Discovery</string>
     <string name="notification_channel_voice">Voice Service</string>
+
+    <!-- Common actions -->
+    <string name="action_ok">OK</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_confirm">Confirm</string>
+
+    <!-- Content descriptions -->
+    <string name="cd_back">Back</string>
+    <string name="cd_chat_history">Chat history</string>
+    <string name="cd_clear_chat">Clear chat</string>
+    <string name="cd_voice_input">Voice input</string>
+    <string name="cd_send">Send</string>
+    <string name="cd_task_running">OMNIX task running</string>
+    <string name="cd_stop_task">Stop OMNIX task</string>
+    <string name="cd_stopping_task">Stopping OMNIX task</string>
+
+    <!-- Chat screen -->
+    <string name="chat_title">OMNIX Chat</string>
+    <string name="chat_gemma_ready">Gemma ready</string>
+    <string name="chat_thinking">OMNIX is thinking…</string>
+    <string name="chat_input_hint">Type a message or command…</string>
+
+    <!-- Chat History screen -->
+    <string name="chat_history_title">Chat History</string>
+    <string name="chat_history_empty">No saved chats yet.\nStart a conversation to see it here.</string>
+    <string name="chat_session_default_title">Chat session</string>
+    <string name="chat_session_detail_title">Session</string>
+    <string name="chat_session_empty">No messages in this session</string>
+    <string name="delete_session_title">Delete session?</string>
+    <!-- %s = session title -->
+    <string name="delete_session_message">"%s" and all its messages will be permanently deleted.</string>
+    <string name="session_deleted">Session deleted</string>
+
+    <!-- Onboarding screen -->
+    <string name="onboarding_subtitle">Your On-Device AI Agent</string>
+    <string name="onboarding_section_setup">Setup Required</string>
+    <string name="onboarding_accessibility_title">Accessibility Service</string>
+    <string name="onboarding_accessibility_desc">Lets OMNIX read your screen and tap buttons</string>
+    <string name="onboarding_overlay_title">Display Over Other Apps</string>
+    <string name="onboarding_overlay_desc">Shows OMNIX overlay during actions</string>
+    <string name="onboarding_voice_title">Voice Model (Vosk ~40 MB)</string>
+    <string name="onboarding_ai_title">Gemma 4 AI Model (~2.6 GB)</string>
+    <string name="onboarding_ai_desc">Enables advanced AI commands — app works without it</string>
+    <string name="onboarding_btn_download_gemma">Download Gemma 4 AI</string>
+    <string name="onboarding_discovery_title">App Knowledge Base</string>
+    <string name="onboarding_discovery_desc">Learns all your apps — reads layouts, activities, permissions</string>
+    <string name="onboarding_btn_launch">LAUNCH OMNIX</string>
+    <string name="onboarding_btn_chat">Open Chat</string>
+    <string name="onboarding_status_checking">Checking…</string>
+    <string name="onboarding_status_fully_ready">Fully Ready</string>
+    <string name="onboarding_status_setup_required">Setup Required</string>
+
+    <!-- Status badges -->
+    <string name="badge_required">REQUIRED</string>
+    <string name="badge_active">ACTIVE</string>
+    <string name="badge_auto">AUTO</string>
+    <string name="badge_optional">OPTIONAL</string>
+    <string name="badge_ready">READY</string>
+    <string name="badge_downloading">DOWNLOADING</string>
+    <string name="badge_loaded">LOADED</string>
+    <string name="badge_warming">WARMING</string>
+    <string name="badge_complete">COMPLETE</string>
+    <string name="badge_learning">LEARNING</string>
+
+    <!-- Onboarding dynamic button labels -->
+    <string name="btn_accessibility_enabled">✓ Accessibility Enabled</string>
+    <string name="btn_enable_in_settings">Enable in Settings</string>
+    <string name="btn_overlay_granted">✓ Overlay Granted</string>
+    <string name="btn_grant_permission">Grant Permission</string>
+    <string name="btn_launch_warm_gemma">Launch OMNIX to Warm Gemma</string>
+    <string name="btn_retry_download">Retry Download</string>
+
+    <!-- Download dialogs -->
+    <string name="wifi_required_title">Wi-Fi Required</string>
+    <string name="wifi_required_message">The Gemma model is ~2 GB. Please connect to Wi-Fi before downloading.</string>
+    <string name="download_gemma_title">Download Gemma 4 AI Model (~2.6 GB)</string>
+    <string name="btn_start_download">Start Download</string>
+    <string name="download_started_toast">Download started — watch progress above</string>
+
+    <!-- Settings screen -->
+    <string name="settings_voice_section">Voice Settings</string>
+    <string name="settings_privacy_section">Privacy &amp; Security</string>
+    <string name="settings_confirm_financial">Confirm financial actions</string>
+    <string name="settings_retention_days">History retention (days)</string>
+    <string name="settings_battery_section">Battery &amp; Discovery</string>
+    <string name="settings_rediscover">Re-discover All Apps</string>
+    <string name="settings_discovery_started">Discovery started in background</string>
+
+    <!-- Payment confirmation dialog (AutonomyLoop) -->
+    <string name="payment_confirm_title">OMNIX Payment Confirmation</string>
+    <!-- %s = command being executed -->
+    <string name="payment_confirm_message">OMNIX wants to execute:\n\n%s\n\nAllow this financial action?</string>
 </resources>

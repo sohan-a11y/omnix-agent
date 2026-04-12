@@ -48,8 +48,7 @@ object GemmaInferenceEngine {
     @Volatile private var currentApp: String = ""
 
     // Multi-turn chat session
-    private var chatConversation: Conversation? = null
-    private var chatMessageCount = 0
+    private val chatHistory = mutableListOf<String>()
 
     // ── Init ───────────────────────────────────────────────────────────────────
 
@@ -105,25 +104,9 @@ object GemmaInferenceEngine {
 
     suspend fun loadAppKnowledge(context: Context) {
         try {
-            val apps = OmnixDatabase.getInstance(context).appDao().getDiscovered()
-            appKnowledge = buildString {
-                appendLine("INSTALLED APPS ON THIS DEVICE (${apps.size} total):")
-                apps.forEach { app ->
-                    append("• ${app.name} pkg=${app.packageName} category=${app.category}")
-                    val caps = app.capabilities
-                    if (!caps.isNullOrBlank() && caps != "[]" && caps != "{}") {
-                        // Extract capabilities list from JSON for compact representation
-                        val capMatch = Regex(""""capabilities":\[([^\]]*)\]""").find(caps)
-                        val capList = capMatch?.groupValues?.get(1)?.replace("\"","")?.trim()
-                        if (!capList.isNullOrBlank()) append(" can=[$capList]")
-                        val permMatch = Regex(""""permissions":\[([^\]]*)\]""").find(caps)
-                        val permList = permMatch?.groupValues?.get(1)?.replace("\"","")?.trim()
-                        if (!permList.isNullOrBlank()) append(" perms=[$permList]")
-                    }
-                    appendLine()
-                }
-            }
-            Log.i(TAG, "App knowledge: ${apps.size} apps loaded into Gemma")
+            val count = AppKnowledgeEngine.refresh(context)
+            appKnowledge = AppKnowledgeEngine.buildConversationSummary()
+            Log.i(TAG, "App knowledge: $count apps loaded into Gemma")
         } catch (e: Exception) {
             Log.w(TAG, "App knowledge load failed: ${e.message}")
         }
@@ -148,12 +131,15 @@ object GemmaInferenceEngine {
                         samplerConfig     = SamplerConfig(topK = 1, topP = 0.95, temperature = 0.1)
                     )
                 )
-                val chunks = mutableListOf<String>()
-                conv.sendMessageAsync(user)
-                    .catch { ex -> Log.e(TAG, "Generation error: ${ex.message}") }
-                    .collect { msg -> chunks.add(msg.toString()) }
-                conv.close()
-                chunks.joinToString("")
+                try {
+                    val chunks = mutableListOf<String>()
+                    conv.sendMessageAsync(user)
+                        .catch { ex -> Log.e(TAG, "Generation error: ${ex.message}") }
+                        .collect { msg -> chunks.add(msg.toString()) }
+                    chunks.joinToString("")
+                } finally {
+                    conv.close()
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "generate() failed: ${e.message}")
                 "{}"
@@ -174,7 +160,7 @@ object GemmaInferenceEngine {
     }
 
     private suspend fun extractWithGemma(query: String): IntentResult {
-        val raw = generate(buildIntentSystem(), query)
+        val raw = generate(buildIntentSystem(query), query)
         Log.d(TAG, "Gemma raw: ${raw.take(300)}")
         return try {
             json.decodeFromString<IntentResult>(raw.extractJsonBlock())
@@ -190,7 +176,7 @@ object GemmaInferenceEngine {
         }
     }
 
-    private fun buildIntentSystem(): String = buildString {
+    private fun buildIntentSystem(query: String): String = buildString {
         appendLine("""
 You are OMNIX, an Android AI assistant. Convert voice commands to JSON intents.
 Output ONLY valid JSON — no markdown, no explanation.
@@ -202,6 +188,7 @@ Intents: launch_app | make_call | send_message | transfer_money | check_balance 
 
 Rules:
 - launch_app → put exact package name in entities.app
+- Prefer packages from DEVICE APP INDEX and map nicknames or misspellings to the closest installed app
 - make_call → entities.contact = person name
 - send_message → entities.contact, text, app (package)
 - transfer_money → entities.contact, amount (digits only)
@@ -210,9 +197,10 @@ Rules:
 - unknown → confidence < 0.3, ambiguous=true, clarification=ask user
         """.trimIndent())
 
-        if (appKnowledge.isNotBlank()) {
+        val relevantAppKnowledge = AppKnowledgeEngine.buildIntentContext(query)
+        if (relevantAppKnowledge.isNotBlank()) {
             appendLine()
-            appendLine(appKnowledge)
+            appendLine(relevantAppKnowledge)
         }
         if (currentApp.isNotBlank()) appendLine("CURRENT APP: $currentApp")
     }
@@ -229,37 +217,49 @@ Rules:
             ?: return@withLock "The AI model isn't loaded yet. Download Gemma from the setup screen."
         return@withLock withContext(Dispatchers.IO) {
             try {
-                if (chatConversation == null || chatMessageCount >= 20) {
-                    chatConversation?.close()
-                    chatConversation = e.createConversation(
-                        ConversationConfig(
-                            systemInstruction = Contents.of(buildChatSystem()),
-                            samplerConfig     = SamplerConfig(topK = 40, topP = 0.95, temperature = 0.7)
-                        )
-                    )
-                    chatMessageCount = 0
+                val prompt = buildString {
+                    if (chatHistory.isNotEmpty()) {
+                        appendLine("Recent context:")
+                        chatHistory.forEach { appendLine(it) }
+                        appendLine()
+                    }
+                    appendLine("User: $userMessage")
+                    appendLine("AI:")
                 }
-                val conv = chatConversation!!
+
+                val conv = e.createConversation(
+                    ConversationConfig(
+                        systemInstruction = Contents.of(buildChatSystem()),
+                        samplerConfig     = SamplerConfig(topK = 40, topP = 0.95, temperature = 0.7)
+                    )
+                )
+                
                 val chunks = mutableListOf<String>()
-                conv.sendMessageAsync(userMessage)
-                    .catch { ex -> Log.e(TAG, "Converse error: ${ex.message}") }
-                    .collect { msg -> chunks.add(msg.toString()) }
-                chatMessageCount++
-                chunks.joinToString("").trim().ifEmpty { "I'm not sure how to respond to that." }
+                try {
+                    conv.sendMessageAsync(prompt)
+                        .catch { ex -> Log.e(TAG, "Converse error: ${ex.message}") }
+                        .collect { msg -> chunks.add(msg.toString()) }
+                } finally {
+                    conv.close()
+                }
+                
+                val reply = chunks.joinToString("").trim()
+                val finalReply = reply.ifEmpty { "I'm not sure how to respond to that." }
+                
+                chatHistory.add("User: $userMessage")
+                chatHistory.add("AI: $finalReply")
+                if (chatHistory.size > 10) chatHistory.subList(0, 2).clear() // keep last 5 turns
+                
+                finalReply
             } catch (ex: Exception) {
                 Log.e(TAG, "converse() failed: ${ex.message}")
-                chatConversation?.close()
-                chatConversation = null
-                chatMessageCount = 0
                 "Sorry, something went wrong. Please try again."
             }
         }
     }
 
     fun clearChatHistory() {
-        chatConversation?.close()
-        chatConversation = null
-        chatMessageCount = 0
+        chatHistory.clear()
     }
 
     private fun buildChatSystem(): String = buildString {
@@ -267,6 +267,8 @@ Rules:
         appendLine("You help with Android tasks (open apps, send messages, calls, navigation, etc.) and hold natural conversations.")
         appendLine("Be concise, friendly, and helpful. When you execute a task say what you did.")
         appendLine("You run entirely on-device — AI processing needs no internet.")
+        appendLine("Never say you are just a language model or that you cannot access the device.")
+        appendLine("If the user asks for an action and you are only chatting, ask a short clarification instead of refusing the action.")
         if (appKnowledge.isNotBlank()) {
             appendLine()
             appendLine(appKnowledge)

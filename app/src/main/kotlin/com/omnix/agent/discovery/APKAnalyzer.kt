@@ -134,8 +134,31 @@ class APKAnalyzer(private val context: Context) {
     }
 
     private suspend fun persistKnowledge(knowledge: APKKnowledge) {
-        // Stored via APKKnowledge DAO in database
-        // Differential update: only re-crawl screens with changed hashes
+        val permissions = try {
+            val pkgInfo = context.packageManager.getPackageInfo(
+                knowledge.packageId,
+                PackageManager.GET_PERMISSIONS
+            )
+            pkgInfo.requestedPermissions?.toList() ?: emptyList()
+        } catch (_: Exception) {
+            emptyList()
+        }
+        val apkHash = try {
+            computeApkHash(File(knowledge.apkPath))
+        } catch (_: Exception) {
+            ""
+        }
+
+        db.apkKnowledgeDao().upsert(
+            com.omnix.agent.database.APKKnowledgeEntity(
+                packageId = knowledge.packageId,
+                deepLinksJson = json.encodeToString(knowledge.deepLinks),
+                screensJson = json.encodeToString(knowledge.layouts),
+                permissionsJson = json.encodeToString(permissions),
+                analysedAt = knowledge.analyzedAt,
+                apkHash = apkHash
+            )
+        )
     }
 
     /**

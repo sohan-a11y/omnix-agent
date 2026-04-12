@@ -3,6 +3,8 @@ plugins {
     id "org.jetbrains.kotlin.android"
     id "com.google.devtools.ksp" version "2.2.21-2.0.5"
     id "org.jetbrains.kotlin.plugin.serialization" version "2.2.21"
+    id "org.jlleitschuh.gradle.ktlint"
+    id "io.gitlab.arturbosch.detekt"
 }
 
 android {
@@ -13,7 +15,7 @@ android {
         applicationId "com.omnix.agent"
         minSdk 31
         targetSdk 36
-        versionCode 1
+        versionCode (System.getenv("VERSION_CODE")?.toInteger() ?: 1)
         versionName "1.0.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
@@ -47,7 +49,7 @@ android {
         abi {
             enable true
             reset()
-            include "arm64-v8a"
+            include "arm64-v8a", "armeabi-v7a", "x86_64"
             universalApk false
         }
     }
@@ -87,6 +89,12 @@ android {
     }
 }
 
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+    arg("room.incremental", "true")
+    arg("room.generateKotlin", "true")
+}
+
 dependencies {
     // LiteRT-LM — runs .litertlm models (Gemma 4 E2B) with GPU acceleration
     implementation "com.google.ai.edge.litertlm:litertlm-android:0.10.0"
@@ -123,8 +131,18 @@ dependencies {
     // Google Play Services Location (FusedLocationProvider for EventTriggerEngine)
     implementation "com.google.android.gms:play-services-location:21.3.0"
 
-    // Encrypted SharedPreferences for API key storage
+    // Encrypted SharedPreferences for API key storage + DB passphrase
     implementation "androidx.security:security-crypto:1.1.0-alpha06"
+
+    // SQLCipher — AES-256 encryption for Room database (C2 audit fix)
+    implementation "net.zetetic:sqlcipher-android:4.6.1"
+    implementation "androidx.sqlite:sqlite-ktx:2.4.0"
+
+    // Markwon — lightweight Markdown-to-Spanned rendering in TextView (no WebView)
+    implementation "io.noties.markwon:core:4.6.2"
+    implementation "io.noties.markwon:ext-strikethrough:4.6.2"
+    implementation "io.noties.markwon:ext-tables:4.6.2"
+    implementation "io.noties.markwon:linkify:4.6.2"
 
     // Testing
     testImplementation "junit:junit:4.13.2"
@@ -135,4 +153,29 @@ dependencies {
     testImplementation "io.mockk:mockk:1.13.9"
     androidTestImplementation "androidx.test.ext:junit:1.2.1"
     androidTestImplementation "androidx.test.espresso:espresso-core:3.6.1"
+
+    // Detekt formatting rules (ktlint-backed)
+    detektPlugins "io.gitlab.arturbosch.detekt:detekt-formatting:1.23.8"
+}
+
+// ── KtLint ──────────────────────────────────────────────────────────────────
+ktlint {
+    version = "1.3.1"
+    android = true
+    reporters {
+        reporter "checkstyle"
+        reporter "html"
+    }
+    filter {
+        exclude("**/generated/**")
+        include("**/*.kt")
+    }
+}
+
+// ── Detekt ───────────────────────────────────────────────────────────────────
+detekt {
+    config.setFrom(files("$rootDir/config/detekt/detekt.yml"))
+    buildUponDefaultConfig = true
+    autoCorrect = false
+    source.setFrom(files("src/main/kotlin", "src/test/kotlin"))
 }

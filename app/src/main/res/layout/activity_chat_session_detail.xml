@@ -27,7 +27,7 @@
             android:src="@android:drawable/ic_menu_revert"
             android:background="?android:attr/selectableItemBackgroundBorderless"
             android:tint="@color/omnix_text_secondary"
-            android:contentDescription="Back" />
+            android:contentDescription="@string/cd_back" />
 
         <TextView
             android:id="@+id/tv_session_detail_title"
@@ -35,7 +35,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:layout_marginStart="8dp"
-            android:text="Session"
+            android:text="@string/chat_session_detail_title"
             android:textColor="@color/omnix_text_primary"
             android:textSize="15sp"
             android:textStyle="bold"
@@ -54,6 +54,20 @@
         android:paddingBottom="16dp"
         android:clipToPadding="false"
         android:scrollbars="none"
+        app:layout_constraintTop_toBottomOf="@id/top_bar"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- Empty state -->
+    <TextView
+        android:id="@+id/tv_empty_detail"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/chat_session_empty"
+        android:textColor="@color/omnix_text_secondary"
+        android:textSize="14sp"
+        android:visibility="gone"
         app:layout_constraintTop_toBottomOf="@id/top_bar"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"

@@ -137,6 +137,10 @@ interface MemoryDao {
     @Query("SELECT * FROM memories ORDER BY importanceScore DESC LIMIT :limit")
     suspend fun getTopMemories(limit: Int = 100): List<MemoryEntity>
 
+    /** Returns all memories so caller can do in-memory vector similarity search. */
+    @Query("SELECT * FROM memories")
+    suspend fun getAll(): List<MemoryEntity>
+
     @Upsert
     suspend fun upsert(memory: MemoryEntity)
 

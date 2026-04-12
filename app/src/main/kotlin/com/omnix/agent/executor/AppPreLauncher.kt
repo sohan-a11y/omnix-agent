@@ -2,12 +2,17 @@ package com.omnix.agent.executor
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import com.omnix.agent.core.OmnixAccessibilityService
+import com.omnix.agent.database.OmnixDatabase
 import kotlinx.coroutines.*
 
 /**
  * AppPreLauncher + Parallel Execution (Task 33)
  * Pre-warms apps in background to reduce skill execution latency.
+ *
+ * NO hardcoded app lists — uses dynamic usage history and
+ * PackageManager to determine which apps to prewarm.
  */
 object AppPreLauncher {
 
@@ -39,17 +44,33 @@ object AppPreLauncher {
     }
 
     /**
-     * Pre-warm the most commonly used apps on wake word detection.
-     * Uses a static list of top apps likely to be invoked by the user.
+     * Pre-warm the most frequently used apps based on execution history.
+     * No hardcoded list — learns from actual user behavior.
      */
     fun prewarmTopApps(context: Context) {
-        val topApps = listOf(
-            "com.whatsapp",
-            "com.google.android.apps.maps",
-            "com.phonepe.app",
-            "in.amazon.mShop.android.shopping"
-        )
-        topApps.forEach { prewarm(context, it) }
+        scope.launch {
+            try {
+                val db = OmnixDatabase.getInstance(context)
+                val recentHistory = db.executionHistoryDao().getRecent(50)
+
+                // Count how many times each app's skill was executed
+                val appFrequency = recentHistory
+                    .groupBy { extractAppPackage(it.skillId) }
+                    .filterKeys { it.isNotBlank() }
+                    .mapValues { it.value.size }
+                    .entries
+                    .sortedByDescending { it.value }
+                    .take(4)
+
+                appFrequency.forEach { (pkg, _) ->
+                    if (isPackageInstalled(context, pkg)) {
+                        prewarm(context, pkg)
+                    }
+                }
+            } catch (e: Exception) {
+                // Silently fail — prewarming is optional optimization
+            }
+        }
     }
 
     /**
@@ -65,5 +86,20 @@ object AppPreLauncher {
                 executorSkill.first.executeSkill(executorSkill.second, params)
             }
         }.awaitAll()
+    }
+
+    private fun extractAppPackage(skillId: String): String {
+        // Skills are usually named like "com.whatsapp_send_message"
+        // or stored with appId field — this extracts package-like prefixes
+        return skillId.split("_").firstOrNull()?.takeIf { it.contains(".") } ?: ""
+    }
+
+    private fun isPackageInstalled(context: Context, packageName: String): Boolean {
+        return try {
+            context.packageManager.getPackageInfo(packageName, 0)
+            true
+        } catch (e: Exception) {
+            false
+        }
     }
 }

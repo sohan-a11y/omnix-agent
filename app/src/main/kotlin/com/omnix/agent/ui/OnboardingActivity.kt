@@ -1,11 +1,17 @@
 package com.omnix.agent.ui
 
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.Manifest
+import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.view.View
+import android.view.accessibility.AccessibilityManager
 import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -15,6 +21,7 @@ import androidx.work.WorkManager
 import com.omnix.agent.R
 import com.omnix.agent.ai.GemmaInferenceEngine
 import com.omnix.agent.ai.ModelDownloadManager
+import com.omnix.agent.core.OmnixAccessibilityService
 import com.omnix.agent.database.OmnixDatabase
 import com.omnix.agent.discovery.AppDiscoveryWorker
 import com.omnix.agent.executor.OmnixOrchestrator
@@ -27,6 +34,8 @@ import com.omnix.agent.voice.WhisperEngine
 import java.io.File
 import java.io.FileOutputStream
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -60,6 +69,7 @@ class OnboardingActivity : AppCompatActivity() {
 
     // ── Launch ────────────────────────────────────────────────────────────────
     private lateinit var btnStart: Button
+    private var statusRefreshJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -73,6 +83,7 @@ class OnboardingActivity : AppCompatActivity() {
         setupClickListeners()
         requestRuntimePermissions()
         checkAndProgress()
+        scheduleStatusRefresh()
         observeGemmaDownload()
         observeDiscovery()
     }
@@ -158,11 +169,12 @@ class OnboardingActivity : AppCompatActivity() {
     private fun checkAndProgress() {
         val hasAccessibility = isAccessibilityEnabled()
         val hasOverlay       = Settings.canDrawOverlays(this)
-        val hasGemma         = ModelDownloadManager.isModelDownloaded(this)
+        val hasGemmaFile     = ModelDownloadManager.isModelDownloaded(this)
+        val hasGemmaReady    = GemmaInferenceEngine.isReady()
         val hasVosk          = File(filesDir,
             "${WhisperEngine.MODEL_DIR}/${WhisperEngine.MODEL_FILENAME}").exists()
 
-        updateDots(hasAccessibility, hasOverlay, hasVosk, hasGemma)
+        updateDots(hasAccessibility, hasOverlay, hasVosk, hasGemmaFile, hasGemmaReady)
 
         if (!hasVosk) enqueueVoskDownload()
 
@@ -174,53 +186,60 @@ class OnboardingActivity : AppCompatActivity() {
         hasAccessibility: Boolean,
         hasOverlay: Boolean,
         hasVosk: Boolean,
-        hasGemma: Boolean
+        hasGemmaFile: Boolean,
+        hasGemmaReady: Boolean
     ) {
         // Accessibility
         setDot(dotAccessibility, hasAccessibility)
-        tvAccessibilityBadge.text  = if (hasAccessibility) "ACTIVE" else "REQUIRED"
+        tvAccessibilityBadge.text  = if (hasAccessibility) getString(R.string.badge_active) else getString(R.string.badge_required)
         tvAccessibilityBadge.setTextColor(getColor(
             if (hasAccessibility) R.color.omnix_green else R.color.omnix_red))
         findViewById<Button>(R.id.btn_grant_accessibility)?.apply {
-            text      = if (hasAccessibility) "✓ Accessibility Enabled" else "Enable in Settings"
+            text      = if (hasAccessibility) getString(R.string.btn_accessibility_enabled) else getString(R.string.btn_enable_in_settings)
             isEnabled = !hasAccessibility
         }
 
         // Overlay
         setDot(dotOverlay, hasOverlay)
-        tvOverlayBadge.text  = if (hasOverlay) "ACTIVE" else "REQUIRED"
+        tvOverlayBadge.text  = if (hasOverlay) getString(R.string.badge_active) else getString(R.string.badge_required)
         tvOverlayBadge.setTextColor(getColor(
             if (hasOverlay) R.color.omnix_green else R.color.omnix_red))
         findViewById<Button>(R.id.btn_grant_overlay)?.apply {
-            text      = if (hasOverlay) "✓ Overlay Granted" else "Grant Permission"
+            text      = if (hasOverlay) getString(R.string.btn_overlay_granted) else getString(R.string.btn_grant_permission)
             isEnabled = !hasOverlay
         }
 
         // Voice model
         if (hasVosk) {
             setDot(dotVoice, true)
-            tvVoiceBadge.text = "READY"
+            tvVoiceBadge.text = getString(R.string.badge_ready)
             tvVoiceBadge.setTextColor(getColor(R.color.omnix_green))
             tvVoskStatus.text = "✓ Vosk voice model ready — wake word active"
         } else {
             dotVoice.background = getDrawable(R.drawable.bg_status_dot_yellow)
-            tvVoiceBadge.text = "DOWNLOADING"
+            tvVoiceBadge.text = getString(R.string.badge_downloading)
             tvVoiceBadge.setTextColor(getColor(R.color.omnix_yellow))
             tvVoskStatus.text = "Downloading voice model (~40 MB)…"
         }
 
         // AI model
-        if (hasGemma) {
+        if (hasGemmaReady) {
             setDot(dotAi, true)
-            tvAiBadge.text = "LOADED"
+            tvAiBadge.text = getString(R.string.badge_loaded)
             tvAiBadge.setTextColor(getColor(R.color.omnix_green))
             btnDownloadModel.text      = "✓ Gemma 4 AI Ready"
             btnDownloadModel.isEnabled = false
+        } else if (hasGemmaFile) {
+            dotAi.background = getDrawable(R.drawable.bg_status_dot_yellow)
+            tvAiBadge.text = getString(R.string.badge_warming)
+            tvAiBadge.setTextColor(getColor(R.color.omnix_yellow))
+            btnDownloadModel.text      = getString(R.string.btn_launch_warm_gemma)
+            btnDownloadModel.isEnabled = false
         } else {
             dotAi.background = getDrawable(R.drawable.bg_status_dot_yellow)
-            tvAiBadge.text = "OPTIONAL"
+            tvAiBadge.text = getString(R.string.badge_optional)
             tvAiBadge.setTextColor(getColor(R.color.omnix_yellow))
-            btnDownloadModel.text      = "Download Gemma 4 AI"
+            btnDownloadModel.text      = getString(R.string.onboarding_btn_download_gemma)
             btnDownloadModel.isEnabled = true
         }
 
@@ -232,10 +251,11 @@ class OnboardingActivity : AppCompatActivity() {
         dotStatus.background = getDrawable(
             if (ready) R.drawable.bg_status_dot_green else R.drawable.bg_status_dot_red)
         tvLiveStatus.text = when {
-            ready && hasVosk && hasGemma -> "Fully Ready"
+            ready && hasVosk && hasGemmaReady -> getString(R.string.onboarding_status_fully_ready)
+            ready && hasVosk && hasGemmaFile  -> "Ready — AI warming"
             ready && hasVosk             -> "Ready — AI optional"
             ready                        -> "Ready — downloading voice"
-            else                         -> "Setup Required"
+            else                         -> getString(R.string.onboarding_status_setup_required)
         }
     }
 
@@ -283,7 +303,7 @@ class OnboardingActivity : AppCompatActivity() {
                         btnDownloadModel.text         = "✓ Gemma 4 AI Ready"
                         btnDownloadModel.isEnabled    = false
                         setDot(dotAi, true)
-                        tvAiBadge.text = "LOADED"
+                        tvAiBadge.text = getString(R.string.badge_loaded)
                         tvAiBadge.setTextColor(getColor(R.color.omnix_green))
                         checkAndProgress()
                     }
@@ -292,7 +312,7 @@ class OnboardingActivity : AppCompatActivity() {
                         tvDownloadStatus.visibility = View.VISIBLE
                         tvDownloadStatus.text       = "Download failed — tap to retry"
                         btnDownloadModel.isEnabled  = true
-                        btnDownloadModel.text       = "Retry Download"
+                        btnDownloadModel.text       = getString(R.string.btn_retry_download)
                         setDot(dotAi, false)
                     }
                     WorkInfo.State.CANCELLED -> {
@@ -319,14 +339,14 @@ class OnboardingActivity : AppCompatActivity() {
                     allDone -> {
                         progressDiscovery.visibility = View.GONE
                         setDot(dotDiscovery, true)
-                        tvDiscoveryBadge.text = "COMPLETE"
+                        tvDiscoveryBadge.text = getString(R.string.badge_complete)
                         tvDiscoveryBadge.setTextColor(getColor(R.color.omnix_green))
                         tvDiscoveryStatus.text = "✓ All apps learned — knowledge base ready"
                     }
                     active != null -> {
                         progressDiscovery.visibility = View.VISIBLE
                         dotDiscovery.background = getDrawable(R.drawable.bg_status_dot_yellow)
-                        tvDiscoveryBadge.text = "LEARNING"
+                        tvDiscoveryBadge.text = getString(R.string.badge_learning)
                         tvDiscoveryBadge.setTextColor(getColor(R.color.omnix_yellow))
                         val done  = active.progress.getInt("done", 0)
                         val total = active.progress.getInt("total", 0)
@@ -350,21 +370,39 @@ class OnboardingActivity : AppCompatActivity() {
             }
     }
 
+    // ── Wi-Fi check ───────────────────────────────────────────────────────────
+
+    private fun isOnWifi(): Boolean {
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val network = cm.activeNetwork ?: return false
+        val caps = cm.getNetworkCapabilities(network) ?: return false
+        return caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+    }
+
     // ── Model download dialog ─────────────────────────────────────────────────
 
     private fun showModelDownloadDialog() {
+        if (!isOnWifi()) {
+            android.app.AlertDialog.Builder(this)
+                .setTitle(R.string.wifi_required_title)
+                .setMessage(R.string.wifi_required_message)
+                .setPositiveButton(R.string.action_ok, null)
+                .show()
+            return
+        }
+
         android.app.AlertDialog.Builder(this)
-            .setTitle("Download Gemma 4 AI Model (~2.6 GB)")
+            .setTitle(R.string.download_gemma_title)
             .setMessage(
                 "Downloads the Gemma 4 E2B LiteRT model from HuggingFace.\n\n" +
                 "This is a PUBLIC model — no account or token needed.\n\n" +
-                "Make sure you are on Wi-Fi. The download continues in the background."
+                "The download continues in the background."
             )
-            .setPositiveButton("Start Download") { _, _ ->
+            .setPositiveButton(R.string.btn_start_download) { _, _ ->
                 ModelDownloadManager.startDownload(this)
-                Toast.makeText(this, "Download started — watch progress above", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, getString(R.string.download_started_toast), Toast.LENGTH_LONG).show()
             }
-            .setNegativeButton("Cancel", null)
+            .setNegativeButton(R.string.action_cancel, null)
             .show()
     }
 
@@ -376,12 +414,18 @@ class OnboardingActivity : AppCompatActivity() {
         val extracted = File(destDir, WhisperEngine.MODEL_FILENAME)
         if (extracted.exists() || destZip.exists()) return
 
+        // Don't start voice model download on mobile data — it's 40 MB
+        if (!isOnWifi()) {
+            tvVoskStatus.text = "Connect to Wi-Fi to download voice model (~40 MB)"
+            return
+        }
+
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 withContext(Dispatchers.Main) {
                     tvVoskStatus.text = "Downloading voice model (~40 MB)…"
                     dotVoice.background = getDrawable(R.drawable.bg_status_dot_yellow)
-                    tvVoiceBadge.text = "DOWNLOADING"
+                    tvVoiceBadge.text = getString(R.string.badge_downloading)
                 }
                 val url = java.net.URL(
                     "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip"
@@ -413,7 +457,7 @@ class OnboardingActivity : AppCompatActivity() {
                 withContext(Dispatchers.Main) {
                     tvVoskStatus.text = "✓ Voice model ready"
                     setDot(dotVoice, true)
-                    tvVoiceBadge.text = "READY"
+                    tvVoiceBadge.text = getString(R.string.badge_ready)
                     tvVoiceBadge.setTextColor(getColor(R.color.omnix_green))
                     checkAndProgress()
                 }
@@ -461,15 +505,41 @@ class OnboardingActivity : AppCompatActivity() {
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private fun isAccessibilityEnabled(): Boolean {
+        val component = ComponentName(this, OmnixAccessibilityService::class.java)
+        val enabledByManager = getSystemService(AccessibilityManager::class.java)
+            ?.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+            ?.any { serviceInfo ->
+                val info = serviceInfo.resolveInfo.serviceInfo
+                info.packageName == component.packageName && info.name == component.className
+            } == true
+        if (enabledByManager || OmnixAccessibilityService.instance != null) return true
+
         val v = Settings.Secure.getString(
             contentResolver,
             Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
         ) ?: return false
-        return v.contains(packageName)
+        return v.split(':').any { it.equals(component.flattenToString(), ignoreCase = true) }
     }
 
     override fun onResume() {
         super.onResume()
         checkAndProgress()
+        scheduleStatusRefresh()
+    }
+
+    override fun onPause() {
+        statusRefreshJob?.cancel()
+        statusRefreshJob = null
+        super.onPause()
+    }
+
+    private fun scheduleStatusRefresh() {
+        statusRefreshJob?.cancel()
+        statusRefreshJob = lifecycleScope.launch {
+            repeat(12) {
+                delay(750)
+                checkAndProgress()
+            }
+        }
     }
 }

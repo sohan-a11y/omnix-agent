@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import com.omnix.agent.ai.GemmaInferenceEngine
 import com.omnix.agent.ui.OnboardingActivity
 import kotlinx.coroutines.*
 
@@ -41,6 +42,13 @@ class OmnixDiscoveryService : Service() {
                 scope.launch {
                     Log.i("OmnixDisc", "Boot discovery starting")
                     val apps = discoveryEngine.enumerateApps()
+                    updateNotification("Indexed ${apps.size} apps. Learning details…")
+                    discoveryEngine.discoverAllApps { done, total ->
+                        if (total > 0) {
+                            updateNotification("Learning apps: $done / $total")
+                        }
+                    }
+                    GemmaInferenceEngine.loadAppKnowledge(applicationContext)
                     Log.i("OmnixDisc", "Boot discovery done: ${apps.size} apps indexed")
                     stopSelf()
                 }

@@ -13,7 +13,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Voice Settings"
+            android:text="@string/settings_voice_section"
             android:textSize="18sp"
             android:textStyle="bold"
             android:layout_marginBottom="8dp" />
@@ -28,7 +28,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Privacy &amp; Security"
+            android:text="@string/settings_privacy_section"
             android:textSize="18sp"
             android:textStyle="bold"
             android:layout_marginBottom="8dp" />
@@ -37,13 +37,13 @@
             android:id="@+id/switch_confirm_financial"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Confirm financial actions"
+            android:text="@string/settings_confirm_financial"
             android:layout_marginBottom="8dp" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="History retention (days)" />
+            android:text="@string/settings_retention_days" />
 
         <SeekBar
             android:id="@+id/seekbar_retention"
@@ -56,7 +56,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Battery &amp; Discovery"
+            android:text="@string/settings_battery_section"
             android:textSize="18sp"
             android:textStyle="bold"
             android:layout_marginBottom="8dp" />
@@ -71,7 +71,7 @@
             android:id="@+id/btn_rediscover_all"
             android:layout_width="match_parent"
             android:layout_height="48dp"
-            android:text="Re-discover All Apps" />
+            android:text="@string/settings_rediscover" />
 
     </LinearLayout>
 </ScrollView>

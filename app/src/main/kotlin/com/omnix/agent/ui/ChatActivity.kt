@@ -3,7 +3,9 @@ package com.omnix.agent.ui
 import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
+import android.provider.Settings
 import android.speech.RecognizerIntent
+import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
@@ -16,10 +18,14 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.omnix.agent.R
 import com.omnix.agent.ai.GemmaInferenceEngine
+import android.util.Log
+import com.omnix.agent.core.OmnixAccessibilityService
 import com.omnix.agent.database.ChatMessageEntity
 import com.omnix.agent.database.ChatSessionEntity
 import com.omnix.agent.database.OmnixDatabase
 import com.omnix.agent.executor.OmnixOrchestrator
+import com.omnix.agent.executor.TermuxBridge
+import com.omnix.agent.skills.SkillLibraryManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -28,10 +34,13 @@ import java.util.Date
 import java.util.Locale
 import java.util.UUID
 
+import kotlinx.coroutines.flow.catch
+
 class ChatActivity : AppCompatActivity() {
 
     companion object {
         private const val SPEECH_REQUEST = 42
+        private const val TAG = "ChatActivity"
     }
 
     private lateinit var rvMessages: RecyclerView
@@ -46,10 +55,13 @@ class ChatActivity : AppCompatActivity() {
     private val sessionId = UUID.randomUUID().toString()
     private var sessionStarted = false
     private var firstUserMessage = ""
+    private var a11yWarningShown = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_chat)
+        OmnixOrchestrator.initialize(this)
+        SkillLibraryManager.initialize(applicationContext)
 
         rvMessages  = findViewById(R.id.rv_messages)
         etInput     = findViewById(R.id.et_input)
@@ -80,22 +92,92 @@ class ChatActivity : AppCompatActivity() {
         }
 
         setupInputActions()
-        showAiStatus()
-        addAiMessage("Hi! I'm OMNIX. Ask me anything or tell me to do something — open apps, send messages, make calls, or just chat.")
+        showFullStatus()
+
+        addAiMessage("Hi! I'm OMNIX — your autonomous AI assistant. I can control any app, run code, write scripts, and learn from each task.\n\nJust tell me what to do!")
+
+        // Handle test_message from ADB intent (cold start) — wait for Gemma to init
+        intent?.getStringExtra("test_message")?.let { testText ->
+            if (testText.isNotBlank()) {
+                Log.i(TAG, "Test message on cold start: $testText — waiting for Gemma...")
+                lifecycleScope.launch {
+                    // Wait up to 15s for Gemma to become ready
+                    var waited = 0
+                    while (!GemmaInferenceEngine.isReady() && waited < 15000) {
+                        kotlinx.coroutines.delay(500)
+                        waited += 500
+                    }
+                    showFullStatus()
+                    Log.i(TAG, "Gemma ready=${GemmaInferenceEngine.isReady()}, sending: $testText")
+                    etInput.setText(testText)
+                    sendMessage()
+                }
+            }
+        }
     }
 
-    private fun showAiStatus() {
-        tvAiStatus.text = if (GemmaInferenceEngine.isReady()) "Gemma ready" else "AI loading..."
+    override fun onResume() {
+        super.onResume()
+        showFullStatus()
+
+        // Check accessibility on every resume — user might have just enabled it
+        if (OmnixAccessibilityService.instance == null && !a11yWarningShown) {
+            a11yWarningShown = true
+            addAiMessage("⚠️ **Accessibility service not enabled.** I can still chat and run code, but I can't see or tap UI elements.\n\nTo enable: **Settings → Accessibility → Installed services → OMNIX → Enable**\n\nTap the status bar above to open settings.")
+        } else if (OmnixAccessibilityService.instance != null && a11yWarningShown) {
+            a11yWarningShown = false
+            addAiMessage("✅ Accessibility connected! I can now see and control any app.")
+        }
+    }
+
+    /**
+     * Show comprehensive status: Gemma + Accessibility + Termux
+     */
+    private fun showFullStatus() {
+        val gemmaOk = GemmaInferenceEngine.isReady()
+        val a11yOk = OmnixAccessibilityService.instance != null
+        val termuxOk = TermuxBridge.isTermuxInstalled(applicationContext)
+
+        val statusParts = mutableListOf<String>()
+        statusParts.add(if (gemmaOk) "🧠 AI" else "⏳ AI loading")
+        statusParts.add(if (a11yOk) "👁️ A11y" else "❌ A11y")
+        if (termuxOk) statusParts.add("🖥️ Termux")
+
+        tvAiStatus.text = statusParts.joinToString(" | ")
         tvAiStatus.setTextColor(
-            getColor(if (GemmaInferenceEngine.isReady()) R.color.omnix_green else R.color.omnix_yellow)
+            getColor(
+                when {
+                    gemmaOk && a11yOk -> R.color.omnix_green
+                    gemmaOk -> R.color.omnix_yellow
+                    else -> R.color.omnix_red
+                }
+            )
         )
+
+        // Make status bar clickable — opens accessibility settings
+        tvAiStatus.setOnClickListener {
+            if (!a11yOk) {
+                try {
+                    startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    })
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not open accessibility settings: ${e.message}")
+                }
+            }
+        }
     }
 
     private fun setupInputActions() {
         btnSend.setOnClickListener { sendMessage() }
 
-        etInput.setOnEditorActionListener { _, actionId, _ ->
-            if (actionId == EditorInfo.IME_ACTION_SEND) { sendMessage(); true } else false
+        etInput.setOnEditorActionListener { _, actionId, keyEvent ->
+            val isEnter = keyEvent?.keyCode == KeyEvent.KEYCODE_ENTER &&
+                keyEvent.action == KeyEvent.ACTION_DOWN
+            if (actionId == EditorInfo.IME_ACTION_SEND || isEnter || actionId == EditorInfo.IME_ACTION_DONE) {
+                sendMessage()
+                true
+            } else false
         }
 
         btnMic.setOnClickListener {
@@ -109,6 +191,21 @@ class ChatActivity : AppCompatActivity() {
                 startActivityForResult(intent, SPEECH_REQUEST)
             } catch (_: Exception) {
                 addAiMessage("Voice input is not available on this device.")
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleTestMessage(intent)
+    }
+
+    private fun handleTestMessage(intent: Intent?) {
+        intent?.getStringExtra("test_message")?.let { testText ->
+            if (testText.isNotBlank()) {
+                Log.i(TAG, "Test message received: $testText")
+                etInput.setText(testText)
+                sendMessage()
             }
         }
     }
@@ -129,6 +226,7 @@ class ChatActivity : AppCompatActivity() {
         val text = etInput.text.toString().trim()
         if (text.isEmpty()) return
 
+        Log.i(TAG, "sendMessage: '$text'")
         hideKeyboard()
         etInput.text.clear()
 
@@ -141,14 +239,24 @@ class ChatActivity : AppCompatActivity() {
         persistMessage(text, isUser = true)
 
         lifecycleScope.launch {
-            val response = withContext(Dispatchers.IO) {
-                OmnixOrchestrator.handleChatMessage(text)
-            }
+            var lastResponse = ""
+            OmnixOrchestrator.handleChatMessageFlow(text)
+                .catch { e ->
+                    lastResponse = "Error: ${e.message}"
+                    addAiMessage(lastResponse)
+                }
+                .collect { message ->
+                    lastResponse = message
+                    addAiMessage(message)
+                    scrollToBottom()
+                }
             setLoading(false)
-            addAiMessage(response)
+            showFullStatus()  // Refresh status after action
 
-            // Persist AI response
-            persistMessage(response, isUser = false)
+            // Persist final AI response
+            if (lastResponse.isNotBlank()) {
+                persistMessage(lastResponse, isUser = false)
+            }
         }
     }
 
