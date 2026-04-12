@@ -159,7 +159,9 @@ interface HistoryDao {
     @Upsert
     suspend fun insert(action: ActionHistoryEntity)
 
-    @Query("DELETE FROM action_history WHERE timestamp < :cutoff AND retainDays > 0 AND (timestamp/86400000) < :cutoff/86400000 - retainDays")
+    // Delete rows whose retainDays-based expiry has passed.
+    // Expiry = timestamp + (retainDays * 86_400_000 ms). Row expires when expiry < now.
+    @Query("DELETE FROM action_history WHERE retainDays > 0 AND (timestamp + retainDays * 86400000) < :cutoff")
     suspend fun pruneExpired(cutoff: Long = System.currentTimeMillis())
 }
 

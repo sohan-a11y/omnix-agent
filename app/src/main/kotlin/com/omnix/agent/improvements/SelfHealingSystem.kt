@@ -1,5 +1,6 @@
 package com.omnix.agent.improvements
 
+import android.util.Log
 import android.view.accessibility.AccessibilityNodeInfo
 import com.omnix.agent.core.OmnixAccessibilityService
 import com.omnix.agent.ai.GemmaInferenceEngine
@@ -7,8 +8,11 @@ import com.omnix.agent.executor.ElementSelector
 import com.omnix.agent.executor.ExecutionContext
 import com.omnix.agent.executor.SkillStep
 import com.omnix.agent.database.OmnixDatabase
+import org.json.JSONObject
 
 class SelfHealingSystem(private val a11y: OmnixAccessibilityService) {
+
+    private val TAG = "SelfHealingSystem"
 
     /**
      * Attempts to recover from a failed step using multiple strategies:
@@ -46,18 +50,40 @@ class SelfHealingSystem(private val a11y: OmnixAccessibilityService) {
             if (node != null) return performAction(step.action, node, step, ctx)
         }
 
-        // Strategy 4: Gemma-guided - ask model what to do
+        // Strategy 4: Gemma-guided — ask model which element to use, then perform the action
         val screenDump = a11y.getAllText().take(20)
             .joinToString("\n") { "${it.first}: ${it.second}" }
 
         val suggestion = GemmaInferenceEngine.generate(
             system = """You are an Android automation healer.
-                Given a failed step and current screen state, suggest which element to use.
-                Respond with JSON: {"resourceId":"","text":"","contentDesc":""}""",
+Given a failed step and current screen state, suggest which element to use.
+Respond with ONLY valid JSON (no markdown): {"resourceId":"","text":"","contentDesc":""}""",
             user = "Failed step: ${step.action} on ${sel.resourceId}\nScreen:\n$screenDump"
         )
 
-        return false // Could not heal
+        // Parse Gemma's suggestion and attempt the action
+        try {
+            val raw = suggestion.substringAfter("{").let { "{$it" }
+                .substringBefore("}").let { "$it}" }
+            val json = JSONObject(raw)
+            val resourceId = json.optString("resourceId").takeIf { it.isNotBlank() }
+            val text       = json.optString("text").takeIf { it.isNotBlank() }
+            val contentDesc = json.optString("contentDesc").takeIf { it.isNotBlank() }
+
+            val node = resourceId?.let { a11y.findByResourceId(it) }
+                ?: text?.let { a11y.findByText(it) }
+                ?: contentDesc?.let { a11y.findByContentDesc(it) }
+
+            if (node != null) {
+                Log.i(TAG, "Gemma heal succeeded: resourceId=$resourceId text=$text")
+                return performAction(step.action, node, step, ctx)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Gemma heal parse failed: ${e.message}")
+        }
+
+        Log.w(TAG, "All heal strategies exhausted for step: ${step.action}")
+        return false
     }
 
     private fun findBySelector(sel: ElementSelector): AccessibilityNodeInfo? {
