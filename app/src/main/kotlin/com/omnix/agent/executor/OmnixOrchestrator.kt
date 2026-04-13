@@ -192,22 +192,30 @@ object OmnixOrchestrator {
         if (!GemmaInferenceEngine.isReady()) {
             return "The Gemma AI brain isn't loaded yet. Please download the model from the setup screen."
         }
+        // Conversation — no command keywords
         if (!IntentRouter.looksLikeActionRequest(text.lowercase().trim())) {
             return GemmaInferenceEngine.converse(text)
         }
+
+        // Gemma classifies everything — no fallback routing
         val intent = GemmaInferenceEngine.extractIntent(text)
-        if (intent == null || intent.intent == "parse_error" || intent.intent == "unknown" || intent.confidence < 0.45f) {
-            return runAutonomyAndSummarize(text, ctx)
+        if (intent == null || intent.intent == "parse_error") {
+            return "I couldn't understand that request. Please try rephrasing."
         }
         if (intent.ambiguous && !intent.clarification.isNullOrBlank()) return intent.clarification!!
 
         if (intent.intent in IntentRouter.launchIntents) {
-            val launcher = appLauncher ?: return runAutonomyAndSummarize(text, ctx)
-            val launched = launcher.resolveAndLaunch(text, intent.entities["app"], intent.entities["app_name"])
-            val name = launched?.second ?: intent.entities["app_name"] ?: intent.entities["app"] ?: "that app"
-            return if (launched != null) "Opening $name for you!"
-            else if (name == "that app") "Which app would you like me to open?"
-            else runAutonomyAndSummarize(text, ctx)
+            val launched = appLauncher?.resolveAndLaunch(text, intent.entities["app"], intent.entities["app_name"])
+            val name = launched?.second ?: intent.entities["app_name"] ?: intent.entities["app"]
+            return when {
+                launched != null -> "Opening $name for you!"
+                name != null -> "$name doesn't seem to be installed."
+                else -> "Which app would you like me to open?"
+            }
+        }
+
+        if (intent.intent == "unknown" || intent.confidence < 0.4f) {
+            return GemmaInferenceEngine.converse(text)
         }
 
         val skill = SkillLibraryManager.findSkill(intent, text)
@@ -216,7 +224,7 @@ object OmnixOrchestrator {
                 ?: return "I need Accessibility permission enabled to do that. Go to Settings → Accessibility → OMNIX."
             val params = paramResolver?.resolve(skill, intent) ?: emptyMap()
             appLauncher?.learnInBackground(skill.appId)
-            return when (val result = SkillExecutor(a11y, ctx).executeSkill(skill, params)) {
+            return when (SkillExecutor(a11y, ctx).executeSkill(skill, params)) {
                 is SkillResult.Success -> "Done! ${skill.name} completed."
                 is SkillResult.Failure -> runAutonomyAndSummarize(text, ctx)
                 is SkillResult.Cancelled -> "Cancelled."
@@ -233,24 +241,42 @@ object OmnixOrchestrator {
             return@flow
         }
 
+        // Pure conversation — not a command
         if (!IntentRouter.looksLikeActionRequest(text.lowercase().trim())) {
             emit(GemmaInferenceEngine.converse(text))
             return@flow
         }
 
-        var intent = GemmaInferenceEngine.extractIntent(text)
-        if (intent != null && intent.intent != "parse_error" && intent.intent != "unknown" && intent.confidence == 0f) {
-            intent = intent.copy(confidence = 0.85f)
-        }
+        // All decisions go through Gemma — no fallback routing
+        val intent = GemmaInferenceEngine.extractIntent(text)
         Log.i(TAG, "Intent: ${intent?.intent} conf=${intent?.confidence}")
 
-        if (intent != null && intent.intent in IntentRouter.launchIntents && intent.confidence >= 0.45f) {
-            val launched = appLauncher?.resolveAndLaunch(text, intent.entities["app"], intent.entities["app_name"])
-            val name = launched?.second ?: intent.entities["app_name"] ?: intent.entities["app"] ?: "that app"
-            if (launched != null) { emit("Opening $name for you!"); return@flow }
+        if (intent == null || intent.intent == "parse_error") {
+            emit("I couldn't understand that request. Please try rephrasing.")
+            return@flow
         }
 
-        if (intent != null && intent.intent != "parse_error" && intent.intent != "unknown" && intent.confidence >= 0.45f) {
+        // App launch intent — Gemma said "open/launch X"
+        if (intent.intent in IntentRouter.launchIntents) {
+            val launched = appLauncher?.resolveAndLaunch(text, intent.entities["app"], intent.entities["app_name"])
+            val name = launched?.second ?: intent.entities["app_name"] ?: intent.entities["app"]
+            when {
+                launched != null -> { emit("Opening $name for you!"); return@flow }
+                name != null -> { emit("$name doesn't seem to be installed."); return@flow }
+                else -> emit("Which app would you like me to open?")
+            }
+            return@flow
+        }
+
+        // Unknown intent with low confidence — Gemma can't determine what to do
+        if (intent.intent == "unknown" || intent.confidence < 0.4f) {
+            // Let the LLM converse rather than blindly executing
+            emit(GemmaInferenceEngine.converse(text))
+            return@flow
+        }
+
+        // Check pre-built skills — Gemma validates the match (see SkillLibraryManager.gemmaValidate)
+        if (intent.confidence >= 0.45f) {
             val skill = SkillLibraryManager.findSkill(intent, text)
             if (skill != null) {
                 val a11y = OmnixAccessibilityService.instance
@@ -260,18 +286,19 @@ object OmnixOrchestrator {
                     appLauncher?.learnInBackground(skill.appId)
                     when (SkillExecutor(a11y, ctx).executeSkill(skill, params)) {
                         is SkillResult.Success -> { emit("✅ Done! ${skill.name} completed."); return@flow }
-                        is SkillResult.Failure -> emit("⚠️ Skill failed, switching to autonomous mode...")
+                        is SkillResult.Failure -> emit("⚠️ Skill failed, letting AI handle it autonomously...")
                         is SkillResult.Cancelled -> { emit("Cancelled."); return@flow }
                     }
                 }
             }
         }
 
-        val autonomyGoal = if (intent != null && intent.entities.isNotEmpty()) {
+        // AutonomyLoop — Gemma drives every step via ReAct reasoning
+        val autonomyGoal = buildString {
+            append(text)
             val ents = intent.entities.filterValues { !it.isNullOrBlank() }
-            if (ents.isNotEmpty()) "$text [intent=${intent.intent}, ${ents.entries.joinToString(", ") { "${it.key}=${it.value}" }}]"
-            else text
-        } else text
+            if (ents.isNotEmpty()) append(" [intent=${intent.intent}, ${ents.entries.joinToString(", ") { "${it.key}=${it.value}" }}]")
+        }
 
         emit("🤖 Starting autonomous task...")
         AutonomyLoop.runAsFlow(autonomyGoal, ctx).collect { update ->

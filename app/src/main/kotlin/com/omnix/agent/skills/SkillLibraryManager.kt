@@ -75,7 +75,9 @@ object SkillLibraryManager {
             return directMatch
         }
 
-        // Stage 3: Semantic similarity
+        // Stage 3: Semantic similarity (requires Gemma embedding — no LLM = no match)
+        if (!GemmaInferenceEngine.isReady()) return null
+
         val queryEmbedding = GemmaInferenceEngine.generateEmbedding(buildEmbeddingQuery(intent, rawQuery))
         val ranked = candidates
             .filter { embeddingCache.containsKey(it.id) }
@@ -83,35 +85,48 @@ object SkillLibraryManager {
                 val emb = embeddingCache[skill.id] ?: return@map Pair(0f, skill)
                 Pair(cosineSimilarity(queryEmbedding, emb), skill)
             }
-            .filter { it.first > 0.55f }
+            .filter { it.first > 0.65f }          // tighter threshold — don't guess
             .sortedByDescending { it.first }
             .map { it.second }
 
-        if (ranked.isEmpty()) return candidates.firstOrNull()
+        // No match above threshold → do nothing. Do NOT fall back to a random skill.
+        if (ranked.isEmpty()) return null
 
-        // Stage 4: Gemma re-rank top 3 (only if Gemma is ready)
-        if (ranked.size > 1 && GemmaInferenceEngine.isReady()) {
-            return gemmaRerank(intent, ranked.take(3))
-        }
-
-        return ranked.first()
+        // Stage 4: Gemma always validates the match — no skill runs without LLM confirmation
+        return gemmaValidate(intent, rawQuery, ranked.take(3))
     }
 
-    private suspend fun gemmaRerank(intent: IntentResult, candidates: List<SkillEntity>): SkillEntity? {
+    /**
+     * Asks Gemma to confirm whether any candidate skill actually matches the user's intent.
+     * Returns null if Gemma says none of them are a good match — this prevents false positives.
+     */
+    private suspend fun gemmaValidate(
+        intent: IntentResult,
+        rawQuery: String?,
+        candidates: List<SkillEntity>
+    ): SkillEntity? {
         val candidateList = candidates.mapIndexed { i, s -> "${i + 1}. ${s.name}: ${s.intentPatternsJson}" }
             .joinToString("\n")
 
         val result = GemmaInferenceEngine.generate(
-            system = "Select the best skill for the user intent. Respond with ONLY the number (1, 2, or 3).",
-            user = "Intent: ${intent.intent}\nEntities: ${intent.entities}\n\nCandidates:\n$candidateList"
+            system = """You are a skill selector. Given a user query and candidate skills, respond with:
+- ONLY the number (1, 2, or 3) if one of the skills clearly matches what the user wants
+- "NONE" if none of the skills match the user's actual intent
+
+Do not execute partial matches. If the user says "open settings" and the skills are about WhatsApp, respond NONE.""",
+            user = "User query: \"${rawQuery ?: intent.intent}\"\nIntent: ${intent.intent}\nEntities: ${intent.entities}\n\nCandidates:\n$candidateList"
         )
 
-        // Robust parsing: find any digit 1-9 in the response, don't rely on firstOrNull()
+        // If Gemma says NONE, or response is unclear, return null — do NOT execute anything
+        val trimmed = result.trim().uppercase()
+        if (trimmed.contains("NONE") || trimmed.isBlank()) return null
+
         val idx = Regex("\\b([1-9])\\b").find(result)
             ?.groupValues?.get(1)?.toIntOrNull()?.minus(1)
             ?.coerceIn(0, candidates.lastIndex)
-            ?: 0
-        return candidates.getOrNull(idx) ?: candidates.first()
+            ?: return null   // unparseable → do nothing
+
+        return candidates.getOrNull(idx)
     }
 
     /**
