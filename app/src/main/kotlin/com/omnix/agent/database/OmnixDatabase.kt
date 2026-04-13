@@ -142,6 +142,9 @@ abstract class OmnixDatabase : RoomDatabase() {
         }
 
         private fun buildInstance(appCtx: Context): OmnixDatabase {
+            // Must load the SQLCipher native library before any database operation
+            System.loadLibrary("sqlcipher")
+
             val passphrase = getOrCreatePassphrase(appCtx)
             val passphraseBytes = String(passphrase).toByteArray(Charsets.UTF_8)
             val factory = SupportOpenHelperFactory(passphraseBytes)
